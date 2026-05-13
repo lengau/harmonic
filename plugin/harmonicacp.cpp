@@ -54,8 +54,8 @@ void HarmonicAcp::stop()
 
     m_process->closeWriteChannel();
     QPointer<QProcess> process = m_process;
-    QTimer::singleShot(2000, this, [this, process]() {
-        if (!process || process != m_process || process->state() == QProcess::NotRunning) {
+    QTimer::singleShot(2000, process, [process]() {
+        if (!process || process->state() == QProcess::NotRunning) {
             return;
         }
         process->kill();
