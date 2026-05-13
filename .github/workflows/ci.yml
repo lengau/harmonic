@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up LXD
+        uses: canonical/setup-lxd@v0.1.1
+
+      - name: Launch Ubuntu 24.04 container
+        run: |
+          lxc launch ubuntu:24.04 harmonic-ci \
+            --config limits.cpu=4 \
+            --config limits.memory=8GB
+          lxc exec harmonic-ci -- cloud-init status --wait
+
+      - name: Copy source into container
+        run: |
+          tar -czf - --exclude=.git --exclude=target . \
+            | lxc exec harmonic-ci -- bash -c \
+              'mkdir -p /root/harmonic && tar -xzf - -C /root/harmonic'
+
+      - name: Install system dependencies
+        run: |
+          lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y \
+              build-essential \
+              cmake \
+              curl \
+              extra-cmake-modules \
+              libkf6config-dev \
+              libkf6i18n-dev \
+              libkf6texteditor-dev \
+              libkf6xmlgui-dev \
+              qt6-base-dev
+            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal
+          '
+
+      - name: Run Rust tests
+        run: |
+          lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            source "$HOME/.cargo/env"
+            cd /root/harmonic
+            cargo test
+          '
+
+      - name: Build Kate plugin (includes Rust release build)
+        run: |
+          lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            source "$HOME/.cargo/env"
+            cd /root/harmonic
+            cmake -S plugin -B plugin/build -DCMAKE_BUILD_TYPE=Release
+            cmake --build plugin/build -j$(nproc)
+          '
