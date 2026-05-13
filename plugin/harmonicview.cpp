@@ -11,6 +11,7 @@
 #include <KConfigGroup>
 
 #include <QAction>
+#include <QFileInfo>
 #include <QIcon>
 #include <QInputDialog>
 #include <QMainWindow>
@@ -52,6 +53,7 @@ HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *main
 
     // Update context when the active view changes
     connect(mainWindow, &KTextEditor::MainWindow::viewChanged, this, &HarmonicView::updateChatContext);
+    updateChatContext();
 }
 
 HarmonicView::~HarmonicView()
@@ -72,9 +74,21 @@ HarmonicView::~HarmonicView()
 void HarmonicView::updateChatContext()
 {
     auto *view = m_mainWindow->activeView();
-    if (view && view->document()) {
-        m_chatWidget->setContext(view->document()->text());
+    if (!view || !view->document()) {
+        m_chatWidget->setContext(QString());
+        m_chatWidget->setWorkingDirectory(QString());
+        return;
     }
+
+    auto *document = view->document();
+    m_chatWidget->setContext(document->text());
+
+    QString workingDirectory;
+    const QUrl url = document->url();
+    if (url.isLocalFile()) {
+        workingDirectory = QFileInfo(url.toLocalFile()).absolutePath();
+    }
+    m_chatWidget->setWorkingDirectory(workingDirectory);
 }
 
 void HarmonicView::showStatusMessage(const QString &message, int timeoutMs) const
