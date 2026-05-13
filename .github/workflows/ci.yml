@@ -18,20 +18,20 @@ jobs:
 
       - name: Launch Ubuntu 24.04 container
         run: |
-          lxc launch ubuntu:24.04 harmonic-ci \
+          sudo lxc launch ubuntu:24.04 harmonic-ci \
             --config limits.cpu=4 \
             --config limits.memory=8GB
-          lxc exec harmonic-ci -- cloud-init status --wait
+          sudo lxc exec harmonic-ci -- cloud-init status --wait
 
       - name: Copy source into container
         run: |
           tar -czf - --exclude=.git --exclude=target . \
-            | lxc exec harmonic-ci -- bash -c \
+            | sudo lxc exec harmonic-ci -- bash -c \
               'mkdir -p /root/harmonic && tar -xzf - -C /root/harmonic'
 
       - name: Install system dependencies
         run: |
-          lxc exec harmonic-ci -- bash -c '
+          sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -y
@@ -51,7 +51,7 @@ jobs:
 
       - name: Run Rust tests
         run: |
-          lxc exec harmonic-ci -- bash -c '
+          sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
             source "$HOME/.cargo/env"
             cd /root/harmonic
@@ -60,7 +60,7 @@ jobs:
 
       - name: Build Kate plugin (includes Rust release build)
         run: |
-          lxc exec harmonic-ci -- bash -c '
+          sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
             source "$HOME/.cargo/env"
             cd /root/harmonic
