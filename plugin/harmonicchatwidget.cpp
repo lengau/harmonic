@@ -191,6 +191,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     m_permissionLayout = new QHBoxLayout(m_permissionBar);
     m_permissionLayout->setContentsMargins(8, 4, 8, 4);
     m_permissionLabel = new QLabel(m_permissionBar);
+    m_permissionLabel->setTextFormat(Qt::PlainText);
     m_permissionLabel->setWordWrap(true);
     m_permissionLayout->addWidget(m_permissionLabel, 1);
     m_permissionBar->hide();
