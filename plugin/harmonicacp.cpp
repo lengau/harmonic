@@ -286,14 +286,11 @@ void HarmonicAcp::onProcessFinished(int exitCode, QProcess::ExitStatus status)
     Q_UNUSED(status);
 
     auto *process = qobject_cast<QProcess *>(sender());
-    if (!process) {
+    if (!process || process != m_process) {
         return;
     }
 
-    if (process == m_process) {
-        m_process = nullptr;
-    }
-
+    m_process = nullptr;
     m_sessionId.clear();
     m_nextId = 1;
     m_readBuffer.clear();
