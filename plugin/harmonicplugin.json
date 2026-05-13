@@ -1,0 +1,15 @@
+{
+    "KPlugin": {
+        "Id": "harmonicplugin",
+        "Name": "Harmonic",
+        "Description": "AI-assisted vibecoding for Kate",
+        "Version": "0.1.0",
+        "Category": "Editor",
+        "License": "MIT",
+        "Authors": [
+            {
+                "Name": "Harmonic Contributors"
+            }
+        ]
+    }
+}

@@ -1,0 +1,2 @@
+set(__QT_DEPLOY_TARGET_harmonicplugin_FILE /home/lengau/Work/Code/harmonic/plugin/build/harmonicplugin.so)
+set(__QT_DEPLOY_TARGET_harmonicplugin_TYPE MODULE_LIBRARY)

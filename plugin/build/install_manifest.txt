@@ -1,0 +1,3 @@
+/home/lengau/.local/lib/x86_64-linux-gnu/plugins/kf6/ktexteditor/harmonicplugin.so
+/home/lengau/.local/lib/x86_64-linux-gnu/plugins/kf6/ktexteditor/harmonicplugin.json
+/home/lengau/.local/share/kxmlgui5/harmonicplugin/harmonicplugin.rc

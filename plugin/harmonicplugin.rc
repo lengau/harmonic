@@ -1,0 +1,9 @@
+<!DOCTYPE gui SYSTEM "kpartgui.dtd">
+<gui name="harmonicplugin" library="harmonicplugin" version="1" translationDomain="harmonicplugin">
+    <MenuBar>
+        <Menu name="tools">
+            <text>&amp;Tools</text>
+            <Action name="harmonic_vibecode"/>
+        </Menu>
+    </MenuBar>
+</gui>
