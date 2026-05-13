@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonValue>
 
 /// ACP (Agent Client Protocol) client for communicating with copilot --acp.
 /// Manages the JSON-RPC session over stdin/stdout.
@@ -23,8 +24,8 @@ public:
     void createSession(const QString &cwd);
     void sendPrompt(const QString &text);
     void cancelPrompt();
-    void respondToPermission(int requestId, const QString &optionId);
-    void denyPermission(int requestId);
+    void respondToPermission(const QJsonValue &requestId, const QString &optionId);
+    void denyPermission(const QJsonValue &requestId);
 
 Q_SIGNALS:
     void initialized(const QJsonObject &agentInfo);
@@ -33,12 +34,13 @@ Q_SIGNALS:
     void thoughtChunk(const QString &text);
     void toolCall(const QString &toolCallId, const QString &title, const QString &kind);
     void toolCallUpdate(const QString &toolCallId, const QString &status, const QString &content);
-    void permissionRequested(int requestId, const QString &title, const QJsonArray &options);
+    void permissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options);
     void promptFinished(const QString &stopReason);
     void errorOccurred(const QString &message);
     void processFinished();
 
 private Q_SLOTS:
+    void onProcessStarted();
     void onReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
     void onProcessError(QProcess::ProcessError error);
@@ -46,7 +48,7 @@ private Q_SLOTS:
 private:
     void sendRequest(const QString &method, const QJsonObject &params);
     void sendNotification(const QString &method, const QJsonObject &params);
-    void sendResponse(int id, const QJsonObject &result);
+    void sendResponse(const QJsonValue &id, const QJsonObject &result);
     void processMessage(const QJsonObject &msg);
     void handleSessionUpdate(const QJsonObject &params);
 

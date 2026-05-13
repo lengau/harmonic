@@ -3,6 +3,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QProcess>
 #include <QStringList>
 #include <QWidget>
@@ -39,7 +40,7 @@ private Q_SLOTS:
     void onAcpThoughtChunk(const QString &text);
     void onAcpToolCall(const QString &toolCallId, const QString &title, const QString &kind);
     void onAcpToolCallUpdate(const QString &toolCallId, const QString &status, const QString &content);
-    void onAcpPermissionRequested(int requestId, const QString &title, const QJsonArray &options);
+    void onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options);
     void onAcpPromptFinished(const QString &stopReason);
     void onAcpError(const QString &message);
     void onAcpProcessFinished();
@@ -59,7 +60,9 @@ private:
     void updateTypingIndicator();
     void showPreviousHistoryMessage();
     void showNextHistoryMessage();
-    void showPermissionPrompt(const QString &description, int requestId = -1, const QJsonArray &options = QJsonArray());
+    void showPermissionPrompt(const QString &description,
+                              const QJsonValue &requestId = QJsonValue(),
+                              const QJsonArray &options = QJsonArray());
     void hidePermissionPrompt();
     QString buildConversationPrompt(const QString &message) const;
     QString buildAcpPrompt(const QString &message) const;
