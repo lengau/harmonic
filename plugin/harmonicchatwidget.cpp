@@ -403,6 +403,16 @@ void HarmonicChatWidget::cancelCurrentGeneration()
     hideTypingIndicator();
     hidePermissionPrompt();
 
+    if (m_acp && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady))) {
+        m_pendingAcpPrompt.clear();
+        m_acp->stop();
+        m_acpInitializing = false;
+        m_acpInitialized = false;
+        m_acpSessionReady = false;
+        finishStreaming();
+        return;
+    }
+
     if (m_acp->isRunning() && m_acpSessionReady) {
         m_acp->cancelPrompt();
         return;
@@ -524,6 +534,10 @@ void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
 void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo)
 {
     Q_UNUSED(agentInfo);
+    if (m_pendingAcpPrompt.isEmpty()) {
+        return;
+    }
+
     m_acpInitialized = true;
     m_acpInitializing = true;
     m_acp->createSession(m_acpSessionCwd.isEmpty() ? QDir::currentPath() : m_acpSessionCwd);
@@ -532,14 +546,16 @@ void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo)
 void HarmonicChatWidget::onAcpSessionCreated(const QString &sessionId)
 {
     Q_UNUSED(sessionId);
+    if (m_pendingAcpPrompt.isEmpty()) {
+        return;
+    }
+
     m_acpInitializing = false;
     m_acpSessionReady = true;
 
-    if (!m_pendingAcpPrompt.isEmpty()) {
-        const QString prompt = m_pendingAcpPrompt;
-        m_pendingAcpPrompt.clear();
-        m_acp->sendPrompt(prompt);
-    }
+    const QString prompt = m_pendingAcpPrompt;
+    m_pendingAcpPrompt.clear();
+    m_acp->sendPrompt(prompt);
 }
 
 void HarmonicChatWidget::onAcpTextChunk(const QString &text)
