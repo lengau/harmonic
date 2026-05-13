@@ -547,6 +547,10 @@ void HarmonicChatWidget::refreshChatLog()
     }
 
     m_chatLog->setHtml(html);
+    if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+        m_streamCursor = m_chatLog->textCursor();
+        m_streamCursor.movePosition(QTextCursor::End);
+    }
     scrollChatToBottom();
 }
 
