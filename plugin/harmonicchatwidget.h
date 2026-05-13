@@ -89,6 +89,7 @@ private:
     bool m_waitingForFirstChunk = false;
     bool m_cancelRequested = false;
     bool m_acpInitialized = false;
+    bool m_acpInitializing = false;
     bool m_acpSessionReady = false;
 
     struct Message {
