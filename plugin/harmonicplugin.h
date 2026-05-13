@@ -52,7 +52,7 @@ private:
     QAction *m_vibecodeAction = nullptr;
     QFutureWatcher<QString> *m_vibecodeWatcher = nullptr;
     QPointer<KTextEditor::Document> m_pendingDocument;
-    KTextEditor::Cursor m_pendingCursor;
+    int m_pendingInsertLine = -1;
 };
 
 #endif // HARMONICPLUGIN_H

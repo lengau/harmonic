@@ -57,6 +57,10 @@ HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *main
 HarmonicView::~HarmonicView()
 {
     if (m_vibecodeWatcher && m_vibecodeWatcher->isRunning()) {
+        // Note: cancel() doesn't interrupt the blocking subprocess.
+        // We disconnect signals so the handler won't fire on a destroyed object,
+        // then wait for the subprocess to complete naturally.
+        disconnect(m_vibecodeWatcher, nullptr, this, nullptr);
         m_vibecodeWatcher->cancel();
         m_vibecodeWatcher->waitForFinished();
     }
@@ -137,7 +141,7 @@ void HarmonicView::vibecode()
     }
 
     // Capture document state and config on the UI thread before launching work.
-    KTextEditor::Cursor insertPos = view->cursorPosition();
+    const int insertLine = view->cursorPosition().line();
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QStringLiteral("Harmonic"));
     bool sendContext = group.readEntry("SendContext", true);
@@ -151,7 +155,7 @@ void HarmonicView::vibecode()
     QByteArray apiKeyBytes = group.readEntry("ApiKey", "").toUtf8();
 
     m_pendingDocument = doc;
-    m_pendingCursor = insertPos;
+    m_pendingInsertLine = insertLine;
     m_vibecodeAction->setEnabled(false);
     showStatusMessage(i18n("Harmonic: Generating..."));
 
@@ -199,9 +203,18 @@ void HarmonicView::handleVibecodeFinished()
     } else if (!m_pendingDocument) {
         showStatusMessage(i18n("Harmonic: Generation completed, but the document was closed."), 5000);
     } else {
-        m_pendingDocument->insertText(m_pendingCursor, generated);
+        const int currentLine = qMax(0, qMin(m_pendingInsertLine, m_pendingDocument->lines() - 1));
+        const int insertLine = currentLine + 1;
+        if (insertLine >= m_pendingDocument->lines()) {
+            m_pendingDocument->insertText(
+                KTextEditor::Cursor(currentLine, m_pendingDocument->lineLength(currentLine)),
+                QStringLiteral("\n")
+            );
+        }
+        m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generated + QStringLiteral("\n"));
         showStatusMessage(i18n("Harmonic: Generation complete"), 3000);
     }
 
     m_pendingDocument.clear();
+    m_pendingInsertLine = -1;
 }
