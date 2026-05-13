@@ -12,7 +12,7 @@ include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
 find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
 
 # Build the Rust core library
@@ -53,6 +53,7 @@ set_target_properties(harmonicplugin PROPERTIES
 target_link_libraries(harmonicplugin
     Qt6::Core
     Qt6::Widgets
+    Qt6::Concurrent
     KF6::TextEditor
     KF6::I18n
     KF6::XmlGui
