@@ -431,9 +431,11 @@ void HarmonicChatWidget::finishStreaming()
     updatePrimaryButton();
     hidePermissionPrompt();
 
-    const QString response = m_streamBuffer.trimmed();
-    if (!response.isEmpty()) {
-        m_conversation.append({QStringLiteral("assistant"), response});
+    if (!m_cancelRequested) {
+        const QString response = m_streamBuffer.trimmed();
+        if (!response.isEmpty()) {
+            m_conversation.append({QStringLiteral("assistant"), response});
+        }
     }
     m_streamBuffer.clear();
     m_streamCursor = QTextCursor();
