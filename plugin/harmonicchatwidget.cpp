@@ -237,14 +237,8 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     });
     connect(denyBtn, &QPushButton::clicked, this, &HarmonicChatWidget::denyPermission);
     connect(clearAction, &QAction::triggered, this, &HarmonicChatWidget::clearSession);
-    connect(m_sendButton, &QPushButton::clicked, this, [this]() {
-        if (m_isStreaming) {
-            cancelCurrentGeneration();
-            return;
-        }
-        sendMessage();
-    });
-    connect(m_input, &ChatInputEdit::submitPressed, this, &HarmonicChatWidget::sendMessage);
+    connect(m_sendButton, &QPushButton::clicked, this, &HarmonicChatWidget::handlePrimaryAction);
+    connect(m_input, &ChatInputEdit::submitPressed, this, &HarmonicChatWidget::handlePrimaryAction);
     connect(m_input, &ChatInputEdit::historyPreviousRequested, this, &HarmonicChatWidget::showPreviousHistoryMessage);
     connect(m_input, &ChatInputEdit::historyNextRequested, this, &HarmonicChatWidget::showNextHistoryMessage);
     connect(cancelShortcut, &QShortcut::activated, this, &HarmonicChatWidget::cancelCurrentGeneration);
@@ -266,8 +260,21 @@ void HarmonicChatWidget::setContext(const QString &context)
     m_context = context;
 }
 
+void HarmonicChatWidget::handlePrimaryAction()
+{
+    if (m_isStreaming) {
+        cancelCurrentGeneration();
+        return;
+    }
+
+    sendMessage();
+}
+
 void HarmonicChatWidget::clearSession()
 {
+    cancelCurrentGeneration();
+    m_pendingMessage.clear();
+    clearStreamingState();
     m_conversation.clear();
     refreshChatLog();
 }
@@ -383,6 +390,16 @@ void HarmonicChatWidget::startStreaming()
     scrollChatToBottom();
 }
 
+void HarmonicChatWidget::clearStreamingState()
+{
+    m_isStreaming = false;
+    m_streamBuffer.clear();
+    m_streamCursor = QTextCursor();
+    hideTypingIndicator();
+    hidePermissionPrompt();
+    updatePrimaryButton();
+}
+
 void HarmonicChatWidget::onReadyReadStdout()
 {
     if (!m_process) {
@@ -390,7 +407,7 @@ void HarmonicChatWidget::onReadyReadStdout()
     }
 
     const QString text = QString::fromUtf8(m_process->readAllStandardOutput());
-    if (text.isEmpty()) {
+    if (text.isEmpty() || !m_isStreaming || m_cancelRequested) {
         return;
     }
 
@@ -413,7 +430,7 @@ void HarmonicChatWidget::onReadyReadStderr()
     }
 
     const QString text = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
-    if (text.isEmpty()) {
+    if (text.isEmpty() || !m_isStreaming || m_cancelRequested) {
         return;
     }
 
@@ -426,19 +443,12 @@ void HarmonicChatWidget::onReadyReadStderr()
 
 void HarmonicChatWidget::finishStreaming()
 {
-    m_isStreaming = false;
-    hideTypingIndicator();
-    updatePrimaryButton();
-    hidePermissionPrompt();
+    const QString response = m_streamBuffer.trimmed();
+    clearStreamingState();
 
-    if (!m_cancelRequested) {
-        const QString response = m_streamBuffer.trimmed();
-        if (!response.isEmpty()) {
-            m_conversation.append({QStringLiteral("assistant"), response});
-        }
+    if (!m_cancelRequested && !response.isEmpty()) {
+        m_conversation.append({QStringLiteral("assistant"), response});
     }
-    m_streamBuffer.clear();
-    m_streamCursor = QTextCursor();
     refreshChatLog();
 }
 

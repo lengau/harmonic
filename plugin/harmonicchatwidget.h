@@ -23,6 +23,7 @@ public:
     void setContext(const QString &context);
 
 private Q_SLOTS:
+    void handlePrimaryAction();
     void sendMessage();
     void cancelCurrentGeneration();
     void onReadyReadStdout();
@@ -38,6 +39,7 @@ private:
     void refreshChatLog();
     void scrollChatToBottom();
     void startStreaming();
+    void clearStreamingState();
     void finishStreaming();
     void updatePrimaryButton();
     void showTypingIndicator();
