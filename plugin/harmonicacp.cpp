@@ -2,6 +2,8 @@
 
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QPointer>
+#include <QTimer>
 
 HarmonicAcp::HarmonicAcp(QObject *parent)
     : QObject(parent)
@@ -16,51 +18,48 @@ HarmonicAcp::~HarmonicAcp()
 void HarmonicAcp::start(const QString &command, const QString &workingDir)
 {
     if (m_process) {
-        stop();
+        if (m_process->state() != QProcess::NotRunning) {
+            Q_EMIT errorOccurred(QStringLiteral("ACP server is still shutting down"));
+            return;
+        }
+        m_process->deleteLater();
+        m_process = nullptr;
     }
 
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(workingDir);
+    connect(m_process, &QProcess::started, this, &HarmonicAcp::onProcessStarted);
     connect(m_process, &QProcess::readyReadStandardOutput, this, &HarmonicAcp::onReadyRead);
     connect(m_process, &QProcess::finished, this, &HarmonicAcp::onProcessFinished);
     connect(m_process, &QProcess::errorOccurred, this, &HarmonicAcp::onProcessError);
 
     m_process->start(command, {QStringLiteral("--acp")});
-    if (!m_process->waitForStarted(5000)) {
-        const QString error = m_process->errorString();
-        m_process->deleteLater();
-        m_process = nullptr;
-        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(error));
-        return;
-    }
-
-    // Send initialize
-    QJsonObject params;
-    params[QStringLiteral("protocolVersion")] = 1;
-    QJsonObject clientInfo;
-    clientInfo[QStringLiteral("name")] = QStringLiteral("harmonic");
-    clientInfo[QStringLiteral("title")] = QStringLiteral("Harmonic Kate Plugin");
-    clientInfo[QStringLiteral("version")] = QStringLiteral("0.1.0");
-    params[QStringLiteral("clientInfo")] = clientInfo;
-    params[QStringLiteral("clientCapabilities")] = QJsonObject();
-    sendRequest(QStringLiteral("initialize"), params);
 }
 
 void HarmonicAcp::stop()
 {
-    if (m_process) {
-        m_process->closeWriteChannel();
-        m_process->waitForFinished(2000);
-        if (m_process->state() != QProcess::NotRunning) {
-            m_process->kill();
-            m_process->waitForFinished(1000);
-        }
-        m_process->deleteLater();
-        m_process = nullptr;
-    }
     m_sessionId.clear();
     m_nextId = 1;
     m_readBuffer.clear();
+
+    if (!m_process) {
+        return;
+    }
+
+    if (m_process->state() == QProcess::NotRunning) {
+        m_process->deleteLater();
+        m_process = nullptr;
+        return;
+    }
+
+    m_process->closeWriteChannel();
+    QPointer<QProcess> process = m_process;
+    QTimer::singleShot(2000, this, [this, process]() {
+        if (!process || process != m_process || process->state() == QProcess::NotRunning) {
+            return;
+        }
+        process->kill();
+    });
 }
 
 bool HarmonicAcp::isRunning() const
@@ -104,7 +103,7 @@ void HarmonicAcp::cancelPrompt()
     sendNotification(QStringLiteral("session/cancel"), params);
 }
 
-void HarmonicAcp::respondToPermission(int requestId, const QString &optionId)
+void HarmonicAcp::respondToPermission(const QJsonValue &requestId, const QString &optionId)
 {
     QJsonObject result;
     QJsonObject outcome;
@@ -114,7 +113,7 @@ void HarmonicAcp::respondToPermission(int requestId, const QString &optionId)
     sendResponse(requestId, result);
 }
 
-void HarmonicAcp::denyPermission(int requestId)
+void HarmonicAcp::denyPermission(const QJsonValue &requestId)
 {
     QJsonObject result;
     QJsonObject outcome;
@@ -150,9 +149,9 @@ void HarmonicAcp::sendNotification(const QString &method, const QJsonObject &par
     m_process->write(data);
 }
 
-void HarmonicAcp::sendResponse(int id, const QJsonObject &result)
+void HarmonicAcp::sendResponse(const QJsonValue &id, const QJsonObject &result)
 {
-    if (!m_process || m_process->state() != QProcess::Running) return;
+    if (!m_process || m_process->state() != QProcess::Running || id.isUndefined()) return;
 
     QJsonObject msg;
     msg[QStringLiteral("jsonrpc")] = QStringLiteral("2.0");
@@ -163,11 +162,29 @@ void HarmonicAcp::sendResponse(int id, const QJsonObject &result)
     m_process->write(data);
 }
 
+void HarmonicAcp::onProcessStarted()
+{
+    if (sender() != m_process || !m_process) {
+        return;
+    }
+
+    QJsonObject params;
+    params[QStringLiteral("protocolVersion")] = 1;
+    QJsonObject clientInfo;
+    clientInfo[QStringLiteral("name")] = QStringLiteral("harmonic");
+    clientInfo[QStringLiteral("title")] = QStringLiteral("Harmonic Kate Plugin");
+    clientInfo[QStringLiteral("version")] = QStringLiteral("0.1.0");
+    params[QStringLiteral("clientInfo")] = clientInfo;
+    params[QStringLiteral("clientCapabilities")] = QJsonObject();
+    sendRequest(QStringLiteral("initialize"), params);
+}
+
 void HarmonicAcp::onReadyRead()
 {
-    if (!m_process) return;
+    auto *process = qobject_cast<QProcess *>(sender());
+    if (!process || process != m_process) return;
 
-    m_readBuffer += m_process->readAllStandardOutput();
+    m_readBuffer += process->readAllStandardOutput();
 
     // Process complete lines (NDJSON)
     while (true) {
@@ -228,7 +245,7 @@ void HarmonicAcp::processMessage(const QJsonObject &msg)
     if (method == QStringLiteral("session/update")) {
         handleSessionUpdate(params);
     } else if (method == QStringLiteral("session/request_permission")) {
-        int requestId = msg[QStringLiteral("id")].toInt();
+        const QJsonValue requestId = msg.value(QStringLiteral("id"));
         QJsonObject toolCall = params[QStringLiteral("toolCall")].toObject();
         QString title = toolCall[QStringLiteral("title")].toString();
         QJsonArray options = params[QStringLiteral("options")].toArray();
@@ -267,14 +284,40 @@ void HarmonicAcp::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
     Q_UNUSED(exitCode);
     Q_UNUSED(status);
+
+    auto *process = qobject_cast<QProcess *>(sender());
+    if (!process) {
+        return;
+    }
+
+    if (process == m_process) {
+        m_process = nullptr;
+    }
+
     m_sessionId.clear();
+    m_nextId = 1;
+    m_readBuffer.clear();
+    process->deleteLater();
     Q_EMIT processFinished();
 }
 
 void HarmonicAcp::onProcessError(QProcess::ProcessError error)
 {
-    if (!m_process) return;
+    auto *process = qobject_cast<QProcess *>(sender());
+    if (!process || process != m_process) {
+        return;
+    }
 
-    Q_UNUSED(error);
-    Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(m_process->errorString()));
+    if (error == QProcess::FailedToStart) {
+        const QString errorString = process->errorString();
+        m_process = nullptr;
+        m_sessionId.clear();
+        m_nextId = 1;
+        m_readBuffer.clear();
+        process->deleteLater();
+        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(errorString));
+        return;
+    }
+
+    Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(process->errorString()));
 }

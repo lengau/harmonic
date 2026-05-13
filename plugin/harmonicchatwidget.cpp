@@ -594,7 +594,7 @@ void HarmonicChatWidget::onAcpToolCallUpdate(const QString &toolCallId, const QS
                                     : i18n("Tool update: %1 — %2", status, content));
 }
 
-void HarmonicChatWidget::onAcpPermissionRequested(int requestId, const QString &title, const QJsonArray &options)
+void HarmonicChatWidget::onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options)
 {
     appendMessage(QStringLiteral("status"), i18n("Permission requested: %1", title));
     showPermissionPrompt(title, requestId, options);
@@ -737,7 +737,9 @@ void HarmonicChatWidget::showNextHistoryMessage()
     m_input->moveCursor(QTextCursor::End);
 }
 
-void HarmonicChatWidget::showPermissionPrompt(const QString &description, int requestId, const QJsonArray &options)
+void HarmonicChatWidget::showPermissionPrompt(const QString &description,
+                                              const QJsonValue &requestId,
+                                              const QJsonArray &options)
 {
     while (m_permissionLayout->count() > 1) {
         QLayoutItem *item = m_permissionLayout->takeAt(1);
@@ -749,7 +751,7 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description, int re
 
     m_permissionLabel->setText(description);
 
-    if (options.isEmpty()) {
+    if (requestId.isUndefined() && options.isEmpty()) {
         const struct {
             const char *label;
             const char *value;
@@ -774,7 +776,28 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description, int re
             m_permissionLayout->addWidget(button);
         }
     } else {
-        for (const QJsonValue &value : options) {
+        QJsonArray promptOptions = options;
+        if (promptOptions.isEmpty()) {
+            promptOptions = QJsonArray {
+                QJsonObject {
+                    {QStringLiteral("optionId"), QStringLiteral("allow-once")},
+                    {QStringLiteral("name"), i18n("Allow")},
+                    {QStringLiteral("kind"), QStringLiteral("allow_once")},
+                },
+                QJsonObject {
+                    {QStringLiteral("optionId"), QStringLiteral("allow-always")},
+                    {QStringLiteral("name"), i18n("Always Allow")},
+                    {QStringLiteral("kind"), QStringLiteral("allow_always")},
+                },
+                QJsonObject {
+                    {QStringLiteral("optionId"), QStringLiteral("reject-once")},
+                    {QStringLiteral("name"), i18n("Deny")},
+                    {QStringLiteral("kind"), QStringLiteral("reject_once")},
+                },
+            };
+        }
+
+        for (const QJsonValue &value : promptOptions) {
             const QJsonObject option = value.toObject();
             const QString optionId = option[QStringLiteral("optionId")].toString();
             if (optionId.isEmpty()) {
