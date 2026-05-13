@@ -394,7 +394,7 @@ void HarmonicChatWidget::finishStreaming()
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), harmonicMarkdownToHtml(response), true);
+        appendMessage(QStringLiteral("assistant"), response, harmonicMarkdownToHtml(response));
     } else {
         refreshChatLog();
     }
@@ -453,9 +453,11 @@ void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
     m_process = nullptr;
 }
 
-void HarmonicChatWidget::appendMessage(const QString &role, const QString &text, bool isHtml)
+void HarmonicChatWidget::appendMessage(const QString &role,
+                                       const QString &text,
+                                       const QString &renderedHtml)
 {
-    m_conversation.append({role, text, isHtml});
+    m_conversation.append({role, text, renderedHtml});
     refreshChatLog();
 }
 
@@ -463,7 +465,10 @@ void HarmonicChatWidget::refreshChatLog()
 {
     QString html;
     for (const auto &msg : std::as_const(m_conversation)) {
-        html += renderMessageHtml(msg.role, msg.content, msg.isHtml);
+        const bool hasRenderedHtml = !msg.renderedHtml.isEmpty();
+        html += renderMessageHtml(msg.role,
+                                  hasRenderedHtml ? msg.renderedHtml : msg.content,
+                                  hasRenderedHtml);
     }
     if (m_isStreaming && !m_streamBuffer.isEmpty()) {
         html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
