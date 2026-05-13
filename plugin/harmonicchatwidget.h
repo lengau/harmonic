@@ -65,6 +65,7 @@ private:
     bool m_isStreaming;
     bool m_waitingForFirstChunk;
     bool m_cancelRequested;
+    bool m_isDestroying = false;
 
     struct Message {
         QString role;

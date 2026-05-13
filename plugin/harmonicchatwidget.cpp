@@ -252,6 +252,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
 
 HarmonicChatWidget::~HarmonicChatWidget()
 {
+    m_isDestroying = true;
     m_pendingMessage.clear();
     if (m_process && m_process->state() != QProcess::NotRunning) {
         m_process->disconnect();
@@ -297,6 +298,10 @@ QString HarmonicChatWidget::buildConversationPrompt(const QString &message)
 
 void HarmonicChatWidget::sendMessage()
 {
+    if (m_isDestroying) {
+        return;
+    }
+
     const QString message = m_input->toPlainText().trimmed();
     if (message.isEmpty()) {
         return;
@@ -350,7 +355,7 @@ void HarmonicChatWidget::sendMessage()
 
 void HarmonicChatWidget::cancelCurrentGeneration()
 {
-    if (!m_process || m_process->state() == QProcess::NotRunning) {
+    if (m_isDestroying || !m_process || m_process->state() == QProcess::NotRunning) {
         return;
     }
 
