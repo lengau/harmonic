@@ -3,7 +3,7 @@ name = "harmonic"
 version = "0.1.0"
 edition = "2024"
 description = "AI-assisted vibecoding plugin for Kate – Rust core library"
-license = "MIT"
+license = "LicenseRef-PPL-1.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
