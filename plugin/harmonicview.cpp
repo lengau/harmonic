@@ -56,6 +56,11 @@ HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *main
 
 HarmonicView::~HarmonicView()
 {
+    if (m_vibecodeWatcher && m_vibecodeWatcher->isRunning()) {
+        m_vibecodeWatcher->cancel();
+        m_vibecodeWatcher->waitForFinished();
+    }
+
     m_mainWindow->guiFactory()->removeClient(this);
     delete m_toolView;
 }
@@ -159,6 +164,8 @@ void HarmonicView::vibecode()
         apiKeyBytes,
         sendContext
     ]() -> QString {
+        // QByteArrays captured by value — safe because harmonic_generate() is synchronous
+        // and completes before the lambda returns, keeping the buffers alive.
         const char *context = contextBytes.isEmpty() ? nullptr : contextBytes.constData();
         char *result = harmonic_generate(
             promptBytes.constData(),
