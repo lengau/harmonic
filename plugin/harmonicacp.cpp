@@ -27,7 +27,10 @@ void HarmonicAcp::start(const QString &command, const QString &workingDir)
 
     m_process->start(command, {QStringLiteral("--acp")});
     if (!m_process->waitForStarted(5000)) {
-        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(m_process->errorString()));
+        const QString error = m_process->errorString();
+        m_process->deleteLater();
+        m_process = nullptr;
+        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(error));
         return;
     }
 

@@ -315,7 +315,14 @@ void HarmonicChatWidget::sendMessage()
         return;
     }
 
-    if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning)) {
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group = config->group(QStringLiteral("Harmonic"));
+    const QString backend = group.readEntry("Backend", "copilot");
+    const QString command = group.readEntry("Command", "copilot");
+    const bool acpInitializing = backend == QStringLiteral("copilot")
+        && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
+
+    if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
         m_pendingMessage = message;
         m_input->clear();
         return;
@@ -327,17 +334,13 @@ void HarmonicChatWidget::sendMessage()
 
     appendMessage(QStringLiteral("user"), message);
 
-    KSharedConfig::Ptr config = KSharedConfig::openConfig();
-    KConfigGroup group = config->group(QStringLiteral("Harmonic"));
-    const QString backend = group.readEntry("Backend", "copilot");
-    const QString command = group.readEntry("Command", "copilot");
-
     if (backend == QStringLiteral("copilot")) {
         const QString prompt = buildAcpPrompt(message);
         const QString cwd = m_workingDirectory.isEmpty() ? QDir::currentPath() : m_workingDirectory;
 
         if (!m_acp->isRunning()) {
             resetAcpState();
+            m_acpInitializing = true;
             m_pendingAcpPrompt = prompt;
             m_acpSessionCwd = cwd;
             startStreaming();
@@ -346,6 +349,7 @@ void HarmonicChatWidget::sendMessage()
         }
 
         if (!m_acpSessionReady) {
+            m_acpInitializing = true;
             m_pendingAcpPrompt = prompt;
             m_acpSessionCwd = cwd;
             startStreaming();
@@ -521,12 +525,14 @@ void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo)
 {
     Q_UNUSED(agentInfo);
     m_acpInitialized = true;
+    m_acpInitializing = true;
     m_acp->createSession(m_acpSessionCwd.isEmpty() ? QDir::currentPath() : m_acpSessionCwd);
 }
 
 void HarmonicChatWidget::onAcpSessionCreated(const QString &sessionId)
 {
     Q_UNUSED(sessionId);
+    m_acpInitializing = false;
     m_acpSessionReady = true;
 
     if (!m_pendingAcpPrompt.isEmpty()) {
@@ -805,6 +811,7 @@ void HarmonicChatWidget::resetAcpState()
     m_pendingAcpPrompt.clear();
     m_acpSessionCwd.clear();
     m_acpInitialized = false;
+    m_acpInitializing = false;
     m_acpSessionReady = false;
 }
 
