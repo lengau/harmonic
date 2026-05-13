@@ -3,9 +3,18 @@
 
 #include <KTextEditor/Plugin>
 #include <KTextEditor/MainWindow>
+#include <KTextEditor/Cursor>
 #include <KXMLGUIClient>
 
+#include <QFutureWatcher>
+#include <QPointer>
+#include <QString>
+
+class QAction;
 class HarmonicChatWidget;
+namespace KTextEditor {
+class Document;
+}
 
 class HarmonicPlugin : public KTextEditor::Plugin
 {
@@ -31,12 +40,19 @@ public:
 private Q_SLOTS:
     void vibecode();
     void updateChatContext();
+    void handleVibecodeFinished();
 
 private:
+    void showStatusMessage(const QString &message, int timeoutMs = 0) const;
+
     KTextEditor::MainWindow *m_mainWindow;
     HarmonicPlugin *m_plugin;
-    QWidget *m_toolView;
-    HarmonicChatWidget *m_chatWidget;
+    QWidget *m_toolView = nullptr;
+    HarmonicChatWidget *m_chatWidget = nullptr;
+    QAction *m_vibecodeAction = nullptr;
+    QFutureWatcher<QString> *m_vibecodeWatcher = nullptr;
+    QPointer<KTextEditor::Document> m_pendingDocument;
+    KTextEditor::Cursor m_pendingCursor;
 };
 
 #endif // HARMONICPLUGIN_H
