@@ -3,7 +3,6 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QJsonValue>
 #include <QProcess>
 #include <QStringList>
 #include <QWidget>
@@ -16,17 +15,18 @@ class QTextEdit;
 class QTimer;
 class QHBoxLayout;
 
-class HarmonicChatWidget : public QWidget {
+class HarmonicChatWidget : public QWidget
+{
     Q_OBJECT
 
-  public:
+public:
     explicit HarmonicChatWidget(QWidget *parent = nullptr);
     ~HarmonicChatWidget() override;
 
     void setContext(const QString &context);
     void setWorkingDirectory(const QString &workingDirectory);
 
-  private Q_SLOTS:
+private Q_SLOTS:
     void sendMessage();
     void cancelCurrentGeneration();
     void onReadyReadStdout();
@@ -39,25 +39,19 @@ class HarmonicChatWidget : public QWidget {
     void onAcpThoughtChunk(const QString &text);
     void onAcpToolCall(const QString &toolCallId, const QString &title, const QString &kind);
     void onAcpToolCallUpdate(const QString &toolCallId, const QString &status, const QString &content);
-    void onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options);
+    void onAcpPermissionRequested(int requestId, const QString &title, const QJsonArray &options);
     void onAcpPromptFinished(const QString &stopReason);
     void onAcpError(const QString &message);
     void onAcpProcessFinished();
     void clearSession();
 
-  private:
-    enum class StreamBackend {
-        None,
-        Process,
-        Acp
-    };
-
+private:
     void appendMessage(const QString &role,
                        const QString &text,
                        const QString &renderedHtml = QString());
     void refreshChatLog();
     void scrollChatToBottom();
-    void startStreaming(StreamBackend backend);
+    void startStreaming();
     void finishStreaming();
     void updatePrimaryButton();
     void showTypingIndicator();
@@ -65,16 +59,13 @@ class HarmonicChatWidget : public QWidget {
     void updateTypingIndicator();
     void showPreviousHistoryMessage();
     void showNextHistoryMessage();
-    void showPermissionPrompt(const QString &description,
-                              const QJsonValue &requestId = QJsonValue(),
-                              const QJsonArray &options = QJsonArray());
+    void showPermissionPrompt(const QString &description, int requestId = -1, const QJsonArray &options = QJsonArray());
     void hidePermissionPrompt();
     QString buildConversationPrompt(const QString &message) const;
     QString buildAcpPrompt(const QString &message) const;
     void processQueuedMessage();
     void resetAcpState();
 
-    // UI widgets
     QTextEdit *m_chatLog = nullptr;
     ChatInputEdit *m_input = nullptr;
     QPushButton *m_sendButton = nullptr;
@@ -83,12 +74,8 @@ class HarmonicChatWidget : public QWidget {
     QLabel *m_permissionLabel = nullptr;
     QHBoxLayout *m_permissionLayout = nullptr;
     QTimer *m_typingTimer = nullptr;
-
-    // Backend processes
     QProcess *m_process = nullptr;
     HarmonicAcp *m_acp = nullptr;
-
-    // Prompt/session state
     QString m_context;
     QString m_workingDirectory;
     QString m_streamBuffer;
@@ -96,16 +83,12 @@ class HarmonicChatWidget : public QWidget {
     QString m_pendingAcpPrompt;
     QString m_acpSessionCwd;
     QStringList m_inputHistory;
-
-    // UI state
     int m_historyPosition = 0;
     int m_typingDots = 0;
     bool m_isStreaming = false;
     bool m_waitingForFirstChunk = false;
     bool m_cancelRequested = false;
-    StreamBackend m_streamBackend = StreamBackend::None;
     bool m_acpInitialized = false;
-    bool m_acpInitializing = false;
     bool m_acpSessionReady = false;
 
     struct Message {
