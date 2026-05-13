@@ -16,9 +16,9 @@ jobs:
       - name: Set up LXD
         uses: canonical/setup-lxd@v0.1.1
 
-      - name: Launch Ubuntu 24.04 container
+      - name: Launch Ubuntu 26.04 container
         run: |
-          sudo lxc launch ubuntu:24.04 harmonic-ci \
+          sudo lxc launch ubuntu:26.04 harmonic-ci \
             --config limits.cpu=4 \
             --config limits.memory=8GB
           sudo lxc exec harmonic-ci -- cloud-init status --wait
@@ -34,6 +34,9 @@ jobs:
           sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y software-properties-common
+            add-apt-repository -y universe
             apt-get update -y
             apt-get install -y \
               build-essential \
