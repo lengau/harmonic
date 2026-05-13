@@ -272,6 +272,7 @@ void HarmonicChatWidget::handlePrimaryAction()
 
 void HarmonicChatWidget::clearSession()
 {
+    m_cancelRequested = true;
     cancelCurrentGeneration();
     m_pendingMessage.clear();
     clearStreamingState();
@@ -362,13 +363,18 @@ void HarmonicChatWidget::sendMessage()
 
 void HarmonicChatWidget::cancelCurrentGeneration()
 {
-    if (m_isDestroying || !m_process || m_process->state() == QProcess::NotRunning) {
+    if (m_isDestroying) {
         return;
     }
 
     m_cancelRequested = true;
     hideTypingIndicator();
     hidePermissionPrompt();
+
+    if (!m_process || m_process->state() == QProcess::NotRunning) {
+        return;
+    }
+
     m_process->kill();
 }
 
@@ -443,10 +449,11 @@ void HarmonicChatWidget::onReadyReadStderr()
 
 void HarmonicChatWidget::finishStreaming()
 {
+    const bool cancelled = m_cancelRequested;
     const QString response = m_streamBuffer.trimmed();
     clearStreamingState();
 
-    if (!m_cancelRequested && !response.isEmpty()) {
+    if (!cancelled && !response.isEmpty()) {
         m_conversation.append({QStringLiteral("assistant"), response});
     }
     refreshChatLog();
@@ -473,7 +480,6 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
         appendMessage(QStringLiteral("error"), errorText);
     }
 
-    m_cancelRequested = false;
     m_input->setFocus();
 
     if (m_process) {
