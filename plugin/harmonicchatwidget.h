@@ -34,7 +34,7 @@ private Q_SLOTS:
     void denyPermission();
 
 private:
-    void appendMessage(const QString &role, const QString &text);
+    void appendMessage(const QString &role, const QString &text, bool isHtml = false);
     void refreshChatLog();
     void scrollChatToBottom();
     void startStreaming();
@@ -70,6 +70,7 @@ private:
     struct Message {
         QString role;
         QString content;
+        bool isHtml = false;
     };
     QList<Message> m_conversation;
 };

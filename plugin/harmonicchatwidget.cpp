@@ -1,4 +1,5 @@
 #include "harmonicchatwidget.h"
+#include "harmonicmarkdown.h"
 
 #include <KConfigGroup>
 #include <KLocalizedString>
@@ -44,17 +45,27 @@ QString messageTitleForRole(const QString &role)
     return i18n("Harmonic");
 }
 
-QString renderMessageHtml(const QString &role, const QString &text)
+QString renderMessageHtml(const QString &role, const QString &text, bool textIsHtml = false)
 {
+    if (role == QStringLiteral("status")) {
+        return QStringLiteral(
+                   "<div style=\"background-color:%1; border-bottom:1px solid #e0e0e0; "
+                   "margin:0; padding:6px; color:#666666; font-style:italic; white-space:pre-wrap;\">%2</div>")
+            .arg(messageBackgroundForRole(role), text.toHtmlEscaped());
+    }
+
+    const QString body = textIsHtml ? text : text.toHtmlEscaped();
+    const QString contentStyle = textIsHtml ? QString() : QStringLiteral("white-space:pre-wrap;");
     return QStringLiteral(
                "<div style=\"background-color:%1; border-bottom:1px solid #e0e0e0; "
                "margin:0; padding:8px 6px 10px 6px;\">"
                "<div style=\"font-weight:600; margin-bottom:4px;\">%2</div>"
-               "<div style=\"white-space:pre-wrap;\">%3</div>"
+               "<div style=\"%3\">%4</div>"
                "</div>")
         .arg(messageBackgroundForRole(role),
              messageTitleForRole(role).toHtmlEscaped(),
-             text.toHtmlEscaped());
+             contentStyle,
+             body);
 }
 }
 
@@ -383,7 +394,7 @@ void HarmonicChatWidget::finishStreaming()
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), response);
+        appendMessage(QStringLiteral("assistant"), harmonicMarkdownToHtml(response), true);
     } else {
         refreshChatLog();
     }
@@ -442,9 +453,9 @@ void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
     m_process = nullptr;
 }
 
-void HarmonicChatWidget::appendMessage(const QString &role, const QString &text)
+void HarmonicChatWidget::appendMessage(const QString &role, const QString &text, bool isHtml)
 {
-    m_conversation.append({role, text});
+    m_conversation.append({role, text, isHtml});
     refreshChatLog();
 }
 
@@ -452,7 +463,7 @@ void HarmonicChatWidget::refreshChatLog()
 {
     QString html;
     for (const auto &msg : std::as_const(m_conversation)) {
-        html += renderMessageHtml(msg.role, msg.content);
+        html += renderMessageHtml(msg.role, msg.content, msg.isHtml);
     }
     if (m_isStreaming && !m_streamBuffer.isEmpty()) {
         html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);

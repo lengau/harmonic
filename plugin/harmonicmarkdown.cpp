@@ -5,26 +5,33 @@
 
 namespace {
 
+QString applyInlineStyles(QString text)
+{
+    text = text.toHtmlEscaped();
+    text.replace(QRegularExpression(QStringLiteral(R"(\*\*(.+?)\*\*)")), QStringLiteral("<b>\\1</b>"));
+    text.replace(QRegularExpression(QStringLiteral(R"(__(.+?)__)")), QStringLiteral("<b>\\1</b>"));
+    text.replace(QRegularExpression(QStringLiteral(R"((?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*))")), QStringLiteral("<i>\\1</i>"));
+    text.replace(QRegularExpression(QStringLiteral(R"((?<!_)_(?!\s)(.+?)(?<!\s)_(?!_))")), QStringLiteral("<i>\\1</i>"));
+    return text;
+}
+
 QString applyInlineMarkdown(const QString &text)
 {
-    QStringList parts;
-    QStringList codeParts = text.split(QLatin1Char('`'));
+    static const QRegularExpression inlineCodePattern(QStringLiteral(R"(`([^`]+)`)"));
 
-    for (int i = 0; i < codeParts.size(); ++i) {
-        QString part = codeParts.at(i).toHtmlEscaped();
-        if (i % 2 == 1) {
-            parts.append(QStringLiteral("<code style=\"background-color: #2d2d2d; padding: 2px 4px; border-radius: 2px;\">%1</code>").arg(part));
-            continue;
-        }
-
-        part.replace(QRegularExpression(QStringLiteral(R"(\*\*(.+?)\*\*)")), QStringLiteral("<b>\\1</b>"));
-        part.replace(QRegularExpression(QStringLiteral(R"(__(.+?)__)")), QStringLiteral("<b>\\1</b>"));
-        part.replace(QRegularExpression(QStringLiteral(R"((?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*))")), QStringLiteral("<i>\\1</i>"));
-        part.replace(QRegularExpression(QStringLiteral(R"((?<!_)_(?!\s)(.+?)(?<!\s)_(?!_))")), QStringLiteral("<i>\\1</i>"));
-        parts.append(part);
+    QString html;
+    int lastMatchEnd = 0;
+    QRegularExpressionMatchIterator matches = inlineCodePattern.globalMatch(text);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+        html += applyInlineStyles(text.mid(lastMatchEnd, match.capturedStart() - lastMatchEnd));
+        html += QStringLiteral("<code style=\"background-color: #2d2d2d; padding: 2px 4px; border-radius: 2px;\">%1</code>")
+                    .arg(match.captured(1).toHtmlEscaped());
+        lastMatchEnd = match.capturedEnd();
     }
 
-    return parts.join(QString());
+    html += applyInlineStyles(text.mid(lastMatchEnd));
+    return html;
 }
 
 QString renderParagraph(const QString &text)
@@ -91,7 +98,7 @@ QString harmonicMarkdownToHtml(const QString &markdown)
         QRegularExpressionMatch headingMatch = QRegularExpression(QStringLiteral(R"(^(#{1,3})\s+(.+)$)")).match(trimmed);
         if (headingMatch.hasMatch()) {
             closeLists();
-            const int level = headingMatch.captured(1).size() + 2;
+            const int level = headingMatch.captured(1).size() + 2; // Offset headings to keep chat sidebar typography intentionally compact.
             html.append(QStringLiteral("<h%1>%2</h%1>").arg(QString::number(level), applyInlineMarkdown(headingMatch.captured(2))));
             continue;
         }
