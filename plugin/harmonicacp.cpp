@@ -165,6 +165,8 @@ void HarmonicAcp::sendResponse(int id, const QJsonObject &result)
 
 void HarmonicAcp::onReadyRead()
 {
+    if (!m_process) return;
+
     m_readBuffer += m_process->readAllStandardOutput();
 
     // Process complete lines (NDJSON)
@@ -271,6 +273,8 @@ void HarmonicAcp::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
 void HarmonicAcp::onProcessError(QProcess::ProcessError error)
 {
+    if (!m_process) return;
+
     Q_UNUSED(error);
     Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(m_process->errorString()));
 }
