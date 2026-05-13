@@ -252,6 +252,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
 
 HarmonicChatWidget::~HarmonicChatWidget()
 {
+    m_pendingMessage.clear();
     if (m_process && m_process->state() != QProcess::NotRunning) {
         m_process->kill();
         m_process->waitForFinished(1000);
