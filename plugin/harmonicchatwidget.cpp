@@ -29,6 +29,9 @@ QString messageBackgroundForRole(const QString &role)
     if (role == QStringLiteral("user")) {
         return QStringLiteral("#e3f2fd");
     }
+    if (role == QStringLiteral("status")) {
+        return QStringLiteral("#f5f5f5");
+    }
     if (role == QStringLiteral("error")) {
         return QStringLiteral("#ffebee");
     }
@@ -40,10 +43,20 @@ QString messageTitleForRole(const QString &role)
     if (role == QStringLiteral("user")) {
         return i18n("You");
     }
+    if (role == QStringLiteral("status")) {
+        return i18n("Status");
+    }
     if (role == QStringLiteral("error")) {
         return i18n("Error");
     }
     return i18n("Harmonic");
+}
+
+bool isPermissionPrompt(const QString &text)
+{
+    return text.contains(QStringLiteral("Allow"), Qt::CaseInsensitive)
+        || text.contains(QStringLiteral("(y/n)"), Qt::CaseInsensitive)
+        || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive);
 }
 
 QString renderMessageHtml(const QString &role, const QString &text)
@@ -440,10 +453,10 @@ void HarmonicChatWidget::onReadyReadStderr()
         return;
     }
 
-    if (text.contains(QStringLiteral("Allow"), Qt::CaseInsensitive)
-        || text.contains(QStringLiteral("(y/n)"), Qt::CaseInsensitive)
-        || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive)) {
+    if (isPermissionPrompt(text)) {
         showPermissionPrompt(text);
+    } else {
+        appendMessage(QStringLiteral("status"), text);
     }
 }
 
@@ -461,6 +474,9 @@ void HarmonicChatWidget::finishStreaming()
 
 void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
+    Q_UNUSED(exitCode);
+    Q_UNUSED(status);
+
     if (m_process) {
         const QString remaining = QString::fromUtf8(m_process->readAllStandardOutput());
         if (!remaining.isEmpty()) {
@@ -476,8 +492,12 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 
     finishStreaming();
 
-    if (!cancelled && (status != QProcess::NormalExit || exitCode != 0) && !errorText.isEmpty()) {
-        appendMessage(QStringLiteral("error"), errorText);
+    if (!cancelled && !errorText.isEmpty()) {
+        if (isPermissionPrompt(errorText)) {
+            showPermissionPrompt(errorText);
+        } else {
+            appendMessage(QStringLiteral("status"), errorText);
+        }
     }
 
     m_input->setFocus();
