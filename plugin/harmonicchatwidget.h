@@ -2,6 +2,7 @@
 #define HARMONICCHATWIDGET_H
 
 #include <QProcess>
+#include <QTextCursor>
 #include <QStringList>
 #include <QWidget>
 
@@ -59,6 +60,7 @@ private:
     QString m_context;
     QString m_streamBuffer;
     QString m_pendingMessage;
+    QTextCursor m_streamCursor;
     QStringList m_inputHistory;
     int m_historyPosition;
     int m_typingDots;

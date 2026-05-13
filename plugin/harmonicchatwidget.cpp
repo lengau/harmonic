@@ -373,6 +373,14 @@ void HarmonicChatWidget::startStreaming()
     showTypingIndicator();
     updatePrimaryButton();
     refreshChatLog();
+
+    QTextCursor cursor = m_chatLog->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertBlock();
+    cursor.insertText(i18n("Harmonic: "));
+    m_streamCursor = cursor;
+    m_chatLog->setTextCursor(m_streamCursor);
+    scrollChatToBottom();
 }
 
 void HarmonicChatWidget::onReadyReadStdout()
@@ -388,7 +396,14 @@ void HarmonicChatWidget::onReadyReadStdout()
 
     m_streamBuffer += text;
     hideTypingIndicator();
-    refreshChatLog();
+
+    if (m_streamCursor.isNull()) {
+        m_streamCursor = m_chatLog->textCursor();
+        m_streamCursor.movePosition(QTextCursor::End);
+    }
+    m_streamCursor.insertText(text);
+    m_chatLog->setTextCursor(m_streamCursor);
+    scrollChatToBottom();
 }
 
 void HarmonicChatWidget::onReadyReadStderr()
@@ -418,11 +433,11 @@ void HarmonicChatWidget::finishStreaming()
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), response);
-    } else {
-        refreshChatLog();
+        m_conversation.append({QStringLiteral("assistant"), response});
     }
     m_streamBuffer.clear();
+    m_streamCursor = QTextCursor();
+    refreshChatLog();
 }
 
 void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status)
