@@ -752,7 +752,7 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description,
 
     m_permissionLabel->setText(description);
 
-    if (requestId.isUndefined() && options.isEmpty()) {
+    if ((requestId.isNull() || requestId.isUndefined()) && options.isEmpty()) {
         const struct {
             const char *label;
             const char *value;
