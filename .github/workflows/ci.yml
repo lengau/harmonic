@@ -64,11 +64,15 @@ jobs:
             cargo fmt --check --manifest-path /root/harmonic/Cargo.toml
             cargo clippy --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features -- -D warnings
             style_file="/root/harmonic/.clang-format"
-            if ! clang-format --style="file:${style_file}" --dump-config >/dev/null 2>&1; then
-              style_file="/root/harmonic/.clang-format.ci"
-              sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" /root/harmonic/.clang-format > "${style_file}"
+            fallback_style_file="/root/harmonic/.clang-format.ci"
+            backup_style_file="/root/harmonic/.clang-format.bak"
+            if ! clang-format --style=file --dump-config >/dev/null 2>&1; then
+              sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" "${style_file}" > "${fallback_style_file}"
+              cp "${style_file}" "${backup_style_file}"
+              cp "${fallback_style_file}" "${style_file}"
+              trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
             fi
-            clang-format --style="file:${style_file}" --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
+            clang-format --style=file --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
           '
 
       - name: Run Rust tests
