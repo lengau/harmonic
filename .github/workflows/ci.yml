@@ -43,6 +43,7 @@ jobs:
               cmake \
               curl \
               extra-cmake-modules \
+              clang-format \
               libkf6config-dev \
               libkf6i18n-dev \
               libkf6texteditor-dev \
@@ -50,6 +51,17 @@ jobs:
               qt6-base-dev
             curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
               | sh -s -- -y --profile minimal
+          '
+
+      - name: Run lint checks
+        run: |
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            source "$HOME/.cargo/env"
+            cd /root/harmonic
+            cargo fmt --check --manifest-path /root/harmonic/Cargo.toml
+            cargo clippy --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features -- -D warnings
+            clang-format --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
           '
 
       - name: Run Rust tests
