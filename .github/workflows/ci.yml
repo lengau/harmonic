@@ -63,7 +63,12 @@ jobs:
             cd /root/harmonic
             cargo fmt --check --manifest-path /root/harmonic/Cargo.toml
             cargo clippy --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features -- -D warnings
-            clang-format --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
+            style_file="/root/harmonic/.clang-format"
+            if ! clang-format --style="file:${style_file}" --dump-config >/dev/null 2>&1; then
+              style_file="/root/harmonic/.clang-format.ci"
+              sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" /root/harmonic/.clang-format > "${style_file}"
+            fi
+            clang-format --style="file:${style_file}" --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
           '
 
       - name: Run Rust tests
