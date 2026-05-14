@@ -110,17 +110,23 @@ jobs:
         run: |
           sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
+            export CI=true
+            export CARGO_TERM_PROGRESS_WHEN=never
             source "$HOME/.cargo/env"
             cd /root/harmonic
-            cargo test
+            timeout --signal=TERM --kill-after=5m 40m \
+              cargo test --locked --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features
           '
 
       - name: Build Kate plugin (includes Rust release build)
         run: |
           sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
+            export CI=true
+            export CARGO_TERM_PROGRESS_WHEN=never
             source "$HOME/.cargo/env"
             cd /root/harmonic
             cmake -S plugin -B plugin/build -DCMAKE_BUILD_TYPE=Release
-            cmake --build plugin/build -j$(nproc)
+            timeout --signal=TERM --kill-after=5m 45m \
+              cmake --build plugin/build -j"$(nproc)"
           '
