@@ -12,6 +12,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine clang-format targets
+        id: clang-format-targets
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}" --depth=1
+            base_commit="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+            diff_range="${base_commit}..HEAD"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            diff_range="HEAD^..HEAD"
+          else
+            diff_range="HEAD"
+          fi
+
+          mapfile -t changed_cpp_files < <(
+            git diff --name-only --diff-filter=ACMR "${diff_range}" -- 'include/*.h' 'plugin/*.h' 'plugin/*.cpp'
+          )
+
+          if [ "${#changed_cpp_files[@]}" -eq 0 ]; then
+            echo "files=" >>"$GITHUB_OUTPUT"
+          else
+            printf 'files=%s\n' "${changed_cpp_files[*]}" >>"$GITHUB_OUTPUT"
+          fi
 
       - name: Set up LXD
         uses: canonical/setup-lxd@v0.1.1
@@ -72,7 +98,12 @@ jobs:
               cp "${fallback_style_file}" "${style_file}"
               trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
             fi
-            clang-format --style=file --dry-run --Werror /root/harmonic/include/harmonic.h /root/harmonic/plugin/*.cpp /root/harmonic/plugin/*.h
+            style_targets="${{ steps.clang-format-targets.outputs.files }}"
+            if [ -n "${style_targets}" ]; then
+              clang-format --style=file --dry-run --Werror ${style_targets}
+            else
+              echo "No C/C++ files changed; skipping clang-format check."
+            fi
           '
 
       - name: Run Rust tests
