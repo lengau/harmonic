@@ -33,11 +33,11 @@ jobs:
             git diff --name-only --diff-filter=ACMR "${diff_range}" -- 'include/*.h' 'plugin/*.h' 'plugin/*.cpp'
           )
 
-          if [ "${#changed_cpp_files[@]}" -eq 0 ]; then
-            echo "files=" >>"$GITHUB_OUTPUT"
-          else
-            printf 'files=%s\n' "${changed_cpp_files[*]}" >>"$GITHUB_OUTPUT"
-          fi
+          {
+            echo "files<<EOF"
+            printf '%s\n' "${changed_cpp_files[@]}"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
 
       - name: Set up LXD
         uses: canonical/setup-lxd@v0.1.1
@@ -98,9 +98,9 @@ jobs:
               cp "${fallback_style_file}" "${style_file}"
               trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
             fi
-            style_targets="${{ steps.clang-format-targets.outputs.files }}"
-            if [ -n "${style_targets}" ]; then
-              clang-format --style=file --dry-run --Werror ${style_targets}
+            mapfile -t style_targets < <(printf "%s\n" "${{ steps.clang-format-targets.outputs.files }}")
+            if [ "${#style_targets[@]}" -gt 0 ] && [ -n "${style_targets[0]}" ]; then
+              clang-format --style=file --dry-run --Werror "${style_targets[@]}"
             else
               echo "No C/C++ files changed; skipping clang-format check."
             fi
