@@ -16,18 +16,17 @@ class QTextEdit;
 class QTimer;
 class QHBoxLayout;
 
-class HarmonicChatWidget : public QWidget
-{
+class HarmonicChatWidget : public QWidget {
     Q_OBJECT
 
-public:
+  public:
     explicit HarmonicChatWidget(QWidget *parent = nullptr);
     ~HarmonicChatWidget() override;
 
     void setContext(const QString &context);
     void setWorkingDirectory(const QString &workingDirectory);
 
-private Q_SLOTS:
+  private Q_SLOTS:
     void sendMessage();
     void cancelCurrentGeneration();
     void onReadyReadStdout();
@@ -46,13 +45,19 @@ private Q_SLOTS:
     void onAcpProcessFinished();
     void clearSession();
 
-private:
+  private:
+    enum class StreamBackend {
+        None,
+        Process,
+        Acp
+    };
+
     void appendMessage(const QString &role,
                        const QString &text,
                        const QString &renderedHtml = QString());
     void refreshChatLog();
     void scrollChatToBottom();
-    void startStreaming();
+    void startStreaming(StreamBackend backend);
     void finishStreaming();
     void updatePrimaryButton();
     void showTypingIndicator();
@@ -98,6 +103,7 @@ private:
     bool m_isStreaming = false;
     bool m_waitingForFirstChunk = false;
     bool m_cancelRequested = false;
+    StreamBackend m_streamBackend = StreamBackend::None;
     bool m_acpInitialized = false;
     bool m_acpInitializing = false;
     bool m_acpSessionReady = false;

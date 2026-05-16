@@ -25,8 +25,7 @@
 #include <QtMath>
 
 namespace {
-QString messageBackgroundForRole(const QString &role)
-{
+QString messageBackgroundForRole(const QString &role) {
     if (role == QStringLiteral("user")) {
         return QStringLiteral("#e3f2fd");
     }
@@ -39,8 +38,7 @@ QString messageBackgroundForRole(const QString &role)
     return QStringLiteral("#ffffff");
 }
 
-QString messageTitleForRole(const QString &role)
-{
+QString messageTitleForRole(const QString &role) {
     if (role == QStringLiteral("user")) {
         return i18n("You");
     }
@@ -53,8 +51,7 @@ QString messageTitleForRole(const QString &role)
     return i18n("Harmonic");
 }
 
-QString renderMessageHtml(const QString &role, const QString &text, bool textIsHtml = false)
-{
+QString renderMessageHtml(const QString &role, const QString &text, bool textIsHtml = false) {
     if (role == QStringLiteral("status")) {
         return QStringLiteral(
                    "<div style=\"background-color:%1; border-bottom:1px solid #e0e0e0; "
@@ -75,16 +72,14 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              contentStyle,
              body);
 }
-}
+} // namespace
 
-class ChatInputEdit : public QPlainTextEdit
-{
+class ChatInputEdit : public QPlainTextEdit {
     Q_OBJECT
 
-public:
+  public:
     explicit ChatInputEdit(QWidget *parent = nullptr)
-        : QPlainTextEdit(parent)
-    {
+        : QPlainTextEdit(parent) {
         setPlaceholderText(i18n("Ask something..."));
         setLineWrapMode(QPlainTextEdit::WidgetWidth);
         setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
@@ -94,16 +89,14 @@ public:
         QTimer::singleShot(0, this, &ChatInputEdit::updateHeight);
     }
 
-Q_SIGNALS:
+  Q_SIGNALS:
     void submitPressed();
     void historyPreviousRequested();
     void historyNextRequested();
 
-protected:
-    void keyPressEvent(QKeyEvent *event) override
-    {
-        if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
-            && !(event->modifiers() & Qt::ShiftModifier)) {
+  protected:
+    void keyPressEvent(QKeyEvent *event) override {
+        if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !(event->modifiers() & Qt::ShiftModifier)) {
             Q_EMIT submitPressed();
             return;
         }
@@ -122,15 +115,13 @@ protected:
         QPlainTextEdit::keyPressEvent(event);
     }
 
-    void resizeEvent(QResizeEvent *event) override
-    {
+    void resizeEvent(QResizeEvent *event) override {
         QPlainTextEdit::resizeEvent(event);
         updateHeight();
     }
 
-private:
-    void updateHeight()
-    {
+  private:
+    void updateHeight() {
         const int lineHeight = QFontMetrics(font()).lineSpacing();
         constexpr int verticalPadding = 8;
         const int minHeight = lineHeight + (frameWidth() * 2) + verticalPadding;
@@ -144,9 +135,7 @@ private:
 };
 
 HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
-    : QWidget(parent)
-    , m_acp(new HarmonicAcp(this))
-{
+    : QWidget(parent), m_acp(new HarmonicAcp(this)) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
 
@@ -226,8 +215,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     connect(m_acp, &HarmonicAcp::processFinished, this, &HarmonicChatWidget::onAcpProcessFinished);
 }
 
-HarmonicChatWidget::~HarmonicChatWidget()
-{
+HarmonicChatWidget::~HarmonicChatWidget() {
     if (m_process && m_process->state() != QProcess::NotRunning) {
         m_process->kill();
         m_process->waitForFinished(1000);
@@ -238,18 +226,15 @@ HarmonicChatWidget::~HarmonicChatWidget()
     }
 }
 
-void HarmonicChatWidget::setContext(const QString &context)
-{
+void HarmonicChatWidget::setContext(const QString &context) {
     m_context = context;
 }
 
-void HarmonicChatWidget::setWorkingDirectory(const QString &workingDirectory)
-{
+void HarmonicChatWidget::setWorkingDirectory(const QString &workingDirectory) {
     m_workingDirectory = workingDirectory;
 }
 
-void HarmonicChatWidget::clearSession()
-{
+void HarmonicChatWidget::clearSession() {
     m_conversation.clear();
     m_streamBuffer.clear();
     m_pendingMessage.clear();
@@ -276,8 +261,7 @@ void HarmonicChatWidget::clearSession()
     refreshChatLog();
 }
 
-QString HarmonicChatWidget::buildConversationPrompt(const QString &message) const
-{
+QString HarmonicChatWidget::buildConversationPrompt(const QString &message) const {
     QString prompt;
 
     if (!m_context.isEmpty()) {
@@ -300,8 +284,7 @@ QString HarmonicChatWidget::buildConversationPrompt(const QString &message) cons
     return prompt;
 }
 
-QString HarmonicChatWidget::buildAcpPrompt(const QString &message) const
-{
+QString HarmonicChatWidget::buildAcpPrompt(const QString &message) const {
     if (m_context.isEmpty()) {
         return message;
     }
@@ -310,8 +293,7 @@ QString HarmonicChatWidget::buildAcpPrompt(const QString &message) const
         .arg(m_context, message);
 }
 
-void HarmonicChatWidget::sendMessage()
-{
+void HarmonicChatWidget::sendMessage() {
     const QString message = m_input->toPlainText().trimmed();
     if (message.isEmpty()) {
         return;
@@ -321,8 +303,7 @@ void HarmonicChatWidget::sendMessage()
     KConfigGroup group = config->group(QStringLiteral("Harmonic"));
     const QString backend = group.readEntry("Backend", "copilot");
     const QString command = group.readEntry("Command", "copilot");
-    const bool acpInitializing = backend == QStringLiteral("copilot")
-        && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
+    const bool acpInitializing = backend == QStringLiteral("copilot") && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
 
     if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
         m_pendingMessage = message;
@@ -345,7 +326,7 @@ void HarmonicChatWidget::sendMessage()
             m_acpInitializing = true;
             m_pendingAcpPrompt = prompt;
             m_acpSessionCwd = cwd;
-            startStreaming();
+            startStreaming(StreamBackend::Acp);
             m_acp->start(command, cwd);
             return;
         }
@@ -355,14 +336,14 @@ void HarmonicChatWidget::sendMessage()
             m_acpSessionReady = false;
             m_pendingAcpPrompt = prompt;
             m_acpSessionCwd = cwd;
-            startStreaming();
+            startStreaming(StreamBackend::Acp);
             if (m_acpInitialized) {
                 m_acp->createSession(cwd);
             }
             return;
         }
 
-        startStreaming();
+        startStreaming(StreamBackend::Acp);
         m_acp->sendPrompt(prompt);
         return;
     }
@@ -392,12 +373,11 @@ void HarmonicChatWidget::sendMessage()
         args << fullPrompt;
     }
 
-    startStreaming();
+    startStreaming(StreamBackend::Process);
     m_process->start(command, args);
 }
 
-void HarmonicChatWidget::cancelCurrentGeneration()
-{
+void HarmonicChatWidget::cancelCurrentGeneration() {
     if (!m_isStreaming) {
         return;
     }
@@ -426,18 +406,17 @@ void HarmonicChatWidget::cancelCurrentGeneration()
     }
 }
 
-void HarmonicChatWidget::startStreaming()
-{
+void HarmonicChatWidget::startStreaming(StreamBackend backend) {
     m_isStreaming = true;
     m_cancelRequested = false;
+    m_streamBackend = backend;
     m_streamBuffer.clear();
     showTypingIndicator();
     updatePrimaryButton();
     refreshChatLog();
 }
 
-void HarmonicChatWidget::onReadyReadStdout()
-{
+void HarmonicChatWidget::onReadyReadStdout() {
     if (!m_process) {
         return;
     }
@@ -452,8 +431,7 @@ void HarmonicChatWidget::onReadyReadStdout()
     refreshChatLog();
 }
 
-void HarmonicChatWidget::onReadyReadStderr()
-{
+void HarmonicChatWidget::onReadyReadStderr() {
     if (!m_process) {
         return;
     }
@@ -463,16 +441,14 @@ void HarmonicChatWidget::onReadyReadStderr()
         return;
     }
 
-    if (text.contains(QStringLiteral("Allow"), Qt::CaseInsensitive)
-        || text.contains(QStringLiteral("(y/n)"), Qt::CaseInsensitive)
-        || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive)) {
+    if (text.contains(QStringLiteral("Allow"), Qt::CaseInsensitive) || text.contains(QStringLiteral("(y/n)"), Qt::CaseInsensitive) || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive)) {
         showPermissionPrompt(text);
     }
 }
 
-void HarmonicChatWidget::finishStreaming()
-{
+void HarmonicChatWidget::finishStreaming() {
     m_isStreaming = false;
+    m_streamBackend = StreamBackend::None;
     hideTypingIndicator();
     updatePrimaryButton();
     hidePermissionPrompt();
@@ -486,8 +462,7 @@ void HarmonicChatWidget::finishStreaming()
     m_streamBuffer.clear();
 }
 
-void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status)
-{
+void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status) {
     if (m_process) {
         const QString remaining = QString::fromUtf8(m_process->readAllStandardOutput());
         if (!remaining.isEmpty()) {
@@ -498,8 +473,8 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 
     const bool cancelled = m_cancelRequested;
     const QString errorText = (!cancelled && m_process)
-        ? QString::fromUtf8(m_process->readAllStandardError()).trimmed()
-        : QString();
+                                  ? QString::fromUtf8(m_process->readAllStandardError()).trimmed()
+                                  : QString();
 
     finishStreaming();
 
@@ -518,8 +493,7 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
     processQueuedMessage();
 }
 
-void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
-{
+void HarmonicChatWidget::onProcessError(QProcess::ProcessError error) {
     if (!m_process) {
         return;
     }
@@ -537,8 +511,7 @@ void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
     processQueuedMessage();
 }
 
-void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo)
-{
+void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo) {
     Q_UNUSED(agentInfo);
     if (m_pendingAcpPrompt.isEmpty()) {
         return;
@@ -549,8 +522,7 @@ void HarmonicChatWidget::onAcpInitialized(const QJsonObject &agentInfo)
     m_acp->createSession(m_acpSessionCwd.isEmpty() ? QDir::currentPath() : m_acpSessionCwd);
 }
 
-void HarmonicChatWidget::onAcpSessionCreated(const QString &sessionId)
-{
+void HarmonicChatWidget::onAcpSessionCreated(const QString &sessionId) {
     Q_UNUSED(sessionId);
     if (m_pendingAcpPrompt.isEmpty()) {
         return;
@@ -564,8 +536,7 @@ void HarmonicChatWidget::onAcpSessionCreated(const QString &sessionId)
     m_acp->sendPrompt(prompt);
 }
 
-void HarmonicChatWidget::onAcpTextChunk(const QString &text)
-{
+void HarmonicChatWidget::onAcpTextChunk(const QString &text) {
     if (text.isEmpty()) {
         return;
     }
@@ -575,8 +546,7 @@ void HarmonicChatWidget::onAcpTextChunk(const QString &text)
     refreshChatLog();
 }
 
-void HarmonicChatWidget::onAcpThoughtChunk(const QString &text)
-{
+void HarmonicChatWidget::onAcpThoughtChunk(const QString &text) {
     if (text.trimmed().isEmpty()) {
         return;
     }
@@ -585,29 +555,25 @@ void HarmonicChatWidget::onAcpThoughtChunk(const QString &text)
     appendMessage(QStringLiteral("status"), text);
 }
 
-void HarmonicChatWidget::onAcpToolCall(const QString &toolCallId, const QString &title, const QString &kind)
-{
+void HarmonicChatWidget::onAcpToolCall(const QString &toolCallId, const QString &title, const QString &kind) {
     Q_UNUSED(toolCallId);
     appendMessage(QStringLiteral("status"),
                   kind.isEmpty() ? i18n("Tool: %1", title) : i18n("Tool: %1 (%2)", title, kind));
 }
 
-void HarmonicChatWidget::onAcpToolCallUpdate(const QString &toolCallId, const QString &status, const QString &content)
-{
+void HarmonicChatWidget::onAcpToolCallUpdate(const QString &toolCallId, const QString &status, const QString &content) {
     Q_UNUSED(toolCallId);
     appendMessage(QStringLiteral("status"),
                   content.isEmpty() ? i18n("Tool update: %1", status)
                                     : i18n("Tool update: %1 — %2", status, content));
 }
 
-void HarmonicChatWidget::onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options)
-{
+void HarmonicChatWidget::onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options) {
     appendMessage(QStringLiteral("status"), i18n("Permission requested: %1", title));
     showPermissionPrompt(title, requestId, options);
 }
 
-void HarmonicChatWidget::onAcpPromptFinished(const QString &stopReason)
-{
+void HarmonicChatWidget::onAcpPromptFinished(const QString &stopReason) {
     Q_UNUSED(stopReason);
     finishStreaming();
     m_cancelRequested = false;
@@ -615,9 +581,8 @@ void HarmonicChatWidget::onAcpPromptFinished(const QString &stopReason)
     processQueuedMessage();
 }
 
-void HarmonicChatWidget::onAcpError(const QString &message)
-{
-    if (m_isStreaming) {
+void HarmonicChatWidget::onAcpError(const QString &message) {
+    if (m_isStreaming && m_streamBackend == StreamBackend::Acp) {
         finishStreaming();
     }
 
@@ -634,9 +599,8 @@ void HarmonicChatWidget::onAcpError(const QString &message)
     processQueuedMessage();
 }
 
-void HarmonicChatWidget::onAcpProcessFinished()
-{
-    if (m_isStreaming) {
+void HarmonicChatWidget::onAcpProcessFinished() {
+    if (m_isStreaming && m_streamBackend == StreamBackend::Acp) {
         finishStreaming();
     }
 
@@ -648,14 +612,12 @@ void HarmonicChatWidget::onAcpProcessFinished()
 
 void HarmonicChatWidget::appendMessage(const QString &role,
                                        const QString &text,
-                                       const QString &renderedHtml)
-{
+                                       const QString &renderedHtml) {
     m_conversation.append({role, text, renderedHtml});
     refreshChatLog();
 }
 
-void HarmonicChatWidget::refreshChatLog()
-{
+void HarmonicChatWidget::refreshChatLog() {
     QString html;
     for (const auto &msg : std::as_const(m_conversation)) {
         const bool hasRenderedHtml = !msg.renderedHtml.isEmpty();
@@ -671,20 +633,17 @@ void HarmonicChatWidget::refreshChatLog()
     scrollChatToBottom();
 }
 
-void HarmonicChatWidget::scrollChatToBottom()
-{
+void HarmonicChatWidget::scrollChatToBottom() {
     if (auto *sb = m_chatLog->verticalScrollBar()) {
         sb->setValue(sb->maximum());
     }
 }
 
-void HarmonicChatWidget::updatePrimaryButton()
-{
+void HarmonicChatWidget::updatePrimaryButton() {
     m_sendButton->setText(m_isStreaming ? i18n("Stop") : i18n("Send"));
 }
 
-void HarmonicChatWidget::showTypingIndicator()
-{
+void HarmonicChatWidget::showTypingIndicator() {
     m_waitingForFirstChunk = true;
     m_typingDots = 0;
     updateTypingIndicator();
@@ -692,15 +651,13 @@ void HarmonicChatWidget::showTypingIndicator()
     m_typingTimer->start();
 }
 
-void HarmonicChatWidget::hideTypingIndicator()
-{
+void HarmonicChatWidget::hideTypingIndicator() {
     m_waitingForFirstChunk = false;
     m_typingTimer->stop();
     m_typingIndicator->hide();
 }
 
-void HarmonicChatWidget::updateTypingIndicator()
-{
+void HarmonicChatWidget::updateTypingIndicator() {
     if (!m_waitingForFirstChunk) {
         return;
     }
@@ -709,8 +666,7 @@ void HarmonicChatWidget::updateTypingIndicator()
     m_typingDots = (m_typingDots + 1) % 4;
 }
 
-void HarmonicChatWidget::showPreviousHistoryMessage()
-{
+void HarmonicChatWidget::showPreviousHistoryMessage() {
     if (m_inputHistory.isEmpty()) {
         return;
     }
@@ -725,8 +681,7 @@ void HarmonicChatWidget::showPreviousHistoryMessage()
     m_input->moveCursor(QTextCursor::End);
 }
 
-void HarmonicChatWidget::showNextHistoryMessage()
-{
+void HarmonicChatWidget::showNextHistoryMessage() {
     if (m_inputHistory.isEmpty()) {
         return;
     }
@@ -745,8 +700,7 @@ void HarmonicChatWidget::showNextHistoryMessage()
 
 void HarmonicChatWidget::showPermissionPrompt(const QString &description,
                                               const QJsonValue &requestId,
-                                              const QJsonArray &options)
-{
+                                              const QJsonArray &options) {
     while (m_permissionLayout->count() > 1) {
         QLayoutItem *item = m_permissionLayout->takeAt(1);
         if (QWidget *widget = item->widget()) {
@@ -826,14 +780,12 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description,
     m_permissionBar->show();
 }
 
-void HarmonicChatWidget::hidePermissionPrompt()
-{
+void HarmonicChatWidget::hidePermissionPrompt() {
     m_permissionLabel->clear();
     m_permissionBar->hide();
 }
 
-void HarmonicChatWidget::processQueuedMessage()
-{
+void HarmonicChatWidget::processQueuedMessage() {
     if (m_pendingMessage.isEmpty() || m_isStreaming) {
         return;
     }
@@ -844,8 +796,7 @@ void HarmonicChatWidget::processQueuedMessage()
     sendMessage();
 }
 
-void HarmonicChatWidget::resetAcpState()
-{
+void HarmonicChatWidget::resetAcpState() {
     m_pendingAcpPrompt.clear();
     m_acpSessionCwd.clear();
     m_acpInitialized = false;
