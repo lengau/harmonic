@@ -13,27 +13,18 @@ include(KDECMakeSettings)
 include(KDECompilerSettings)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
-find_package(Qt6Keychain CONFIG QUIET)
-if(NOT Qt6Keychain_FOUND)
-    find_package(Qt6Keychain REQUIRED)
-endif()
+find_package(Qt6Keychain REQUIRED)
 find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
 
-# Find Qt6Keychain include directories
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(Qt6Keychain_PKG QUIET Qt6Keychain)
-endif()
-
-if(NOT Qt6Keychain_INCLUDE_DIRS AND Qt6Keychain_PKG_INCLUDE_DIRS)
-    set(Qt6Keychain_INCLUDE_DIRS ${Qt6Keychain_PKG_INCLUDE_DIRS})
-endif()
-
-# Fallback: search common locations
+# Set Qt6Keychain include dirs if not already found
 if(NOT Qt6Keychain_INCLUDE_DIRS)
     find_path(Qt6Keychain_INCLUDE_DIRS NAMES keychain.h
-        PATHS /usr/include /usr/local/include /usr/include/qt6keychain
-        PATH_SUFFIXES qt6keychain)
+        PATHS /usr/include /usr/local/include
+        PATH_SUFFIXES qt6keychain
+        NO_DEFAULT_PATH)
+    if(NOT Qt6Keychain_INCLUDE_DIRS)
+        find_path(Qt6Keychain_INCLUDE_DIRS NAMES keychain.h)
+    endif()
 endif()
 
 # Build the Rust core library
@@ -74,6 +65,9 @@ set_target_properties(harmonicplugin PROPERTIES
     BUILD_RPATH "${HARMONIC_LIB_DIR}"
 )
 
+# Ensure Qt6Keychain headers are found
+target_include_directories(harmonicplugin PRIVATE ${Qt6Keychain_INCLUDE_DIRS})
+
 target_link_libraries(harmonicplugin
     Qt6::Core
     Qt6::Widgets
@@ -83,7 +77,7 @@ target_link_libraries(harmonicplugin
     KF6::XmlGui
     KF6::ConfigCore
     KF6::ConfigGui
-    qt6keychain
+    Qt6Keychain::Qt6Keychain
     ${HARMONIC_LIB}
 )
 
