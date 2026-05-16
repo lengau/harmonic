@@ -149,6 +149,8 @@ void HarmonicConfigPage::apply() {
 }
 
 void HarmonicConfigPage::reset() {
+    m_isInitializing = true;
+    
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
@@ -156,6 +158,9 @@ void HarmonicConfigPage::reset() {
     m_apiKeyLoaded = false;
     m_apiKeyEdited = false;
     m_apiKeyFieldUserEdited = false;
+
+    // Block signals during programmatic widget updates so they don't mark page dirty
+    blockSignals(true);
 
     QString backend = group.readEntry("Backend", "copilot");
     int idx = m_backendCombo->findData(backend);
@@ -167,7 +172,7 @@ void HarmonicConfigPage::reset() {
     m_modelEdit->setText(group.readEntry("Model", ""));
     m_contextCheck->setChecked(group.readEntry("SendContext", true));
 
-    m_isInitializing = true;
+    blockSignals(false);
 
     // Read API key from Secret Service (via QtKeychain) asynchronously.
     if (m_readJob) {
