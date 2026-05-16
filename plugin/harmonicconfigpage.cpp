@@ -122,7 +122,7 @@ void HarmonicConfigPage::apply() {
         m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
         m_writeJob->setTextData(m_apiKeyEdit->text());
         m_writeJob->setAutoDelete(true);
-         
+
         // Connect cleanup to the job itself, not to this page, so it runs even if
         // the page is destroyed before the job finishes
         QKeychain::WritePasswordJob *writeJob = m_writeJob;
@@ -218,7 +218,7 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
             m_migrateJob->setTextData(legacyKey);
             m_migrateJob->setAutoDelete(true);
-            
+
             // Connect cleanup to the job itself, not to this page, so it runs even if
             // the page is destroyed before the job finishes
             QKeychain::WritePasswordJob *migrateJob = m_migrateJob;
