@@ -31,6 +31,7 @@ class HarmonicConfigPage : public KTextEditor::ConfigPage {
   private Q_SLOTS:
     void onReadPasswordJobFinished();
     void onWritePasswordJobFinished();
+    void onMigratePasswordJobFinished();
     void onSettingChanged();
 
   private:
