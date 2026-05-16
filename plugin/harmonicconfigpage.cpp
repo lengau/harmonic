@@ -222,7 +222,5 @@ void HarmonicConfigPage::onMigratePasswordJobFinished() {
 }
 
 void HarmonicConfigPage::onSettingChanged() {
-  if (!m_isInitializing) {
-    changed();
-  }
+  changed();
 }
