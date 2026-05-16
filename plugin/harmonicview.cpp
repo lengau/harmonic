@@ -10,7 +10,10 @@
 #include <KSharedConfig>
 #include <KConfigGroup>
 
+#include <keychain.h>
+
 #include <QAction>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QIcon>
 #include <QInputDialog>
@@ -156,7 +159,25 @@ void HarmonicView::vibecode() {
     QByteArray backendBytes = group.readEntry("Backend", "copilot").toUtf8();
     QByteArray commandBytes = group.readEntry("Command", "copilot").toUtf8();
     QByteArray modelBytes = group.readEntry("Model", "").toUtf8();
-    QByteArray apiKeyBytes = group.readEntry("ApiKey", "").toUtf8();
+
+    // Read API key from Secret Service; fall back to legacy KConfig entry.
+    QString apiKey;
+    {
+        auto *job = new QKeychain::ReadPasswordJob(QStringLiteral("Harmonic"), this);
+        job->setKey(QStringLiteral("ApiKey"));
+        job->setAutoDelete(false);
+        QEventLoop loop;
+        connect(job, &QKeychain::ReadPasswordJob::finished, &loop, &QEventLoop::quit);
+        job->start();
+        loop.exec();
+        if (job->error() == QKeychain::NoError) {
+            apiKey = job->textData();
+        } else {
+            apiKey = group.readEntry("ApiKey", QString());
+        }
+        job->deleteLater();
+    }
+    QByteArray apiKeyBytes = apiKey.toUtf8();
 
     m_pendingDocument = doc;
     m_pendingInsertLine = insertLine;

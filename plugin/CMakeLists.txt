@@ -13,6 +13,7 @@ include(KDECMakeSettings)
 include(KDECompilerSettings)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
+find_package(Qt6Keychain REQUIRED CONFIG PATHS /usr/lib/x86_64-linux-gnu/cmake)
 find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
 
 # Build the Rust core library
@@ -44,6 +45,7 @@ add_dependencies(harmonicplugin harmonic_rust_lib)
 
 target_include_directories(harmonicplugin PRIVATE
     ${CMAKE_SOURCE_DIR}/../include
+    /usr/include/qt6keychain
 )
 
 # Set rpath so the plugin finds libharmonic.so relative to its location
@@ -61,6 +63,7 @@ target_link_libraries(harmonicplugin
     KF6::XmlGui
     KF6::ConfigCore
     KF6::ConfigGui
+    qt6keychain
     ${HARMONIC_LIB}
 )
 
