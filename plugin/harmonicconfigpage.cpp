@@ -13,7 +13,6 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QIcon>
-#include <QEventLoop>
 
 static const char *CONFIG_GROUP = "Harmonic";
 static const char *KEYCHAIN_SERVICE = "Harmonic";
@@ -96,17 +95,20 @@ void HarmonicConfigPage::apply()
     group.writeEntry("Command", m_commandEdit->text());
     group.writeEntry("Model", m_modelEdit->text());
     group.writeEntry("SendContext", m_contextCheck->isChecked());
-    // Remove any legacy plain-text key left in KConfig.
-    group.deleteEntry("ApiKey");
     group.sync();
 
-    // Store the API key in the Secret Service (via QtKeychain).
-    auto *job = new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
-    job->setKey(QLatin1String(KEYCHAIN_KEY));
-    job->setTextData(m_apiKeyEdit->text());
-    job->setAutoDelete(true);
-    job->start();
-    // Fire-and-forget: errors are non-fatal (key simply won't persist).
+    // Store the API key in the Secret Service (via QtKeychain) asynchronously.
+    // Only delete the legacy entry after the write succeeds.
+    if (m_writeJob) {
+        disconnect(m_writeJob, nullptr, this, nullptr);
+        m_writeJob->deleteLater();
+    }
+    m_writeJob = new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
+    m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
+    m_writeJob->setTextData(m_apiKeyEdit->text());
+    m_writeJob->setAutoDelete(false);
+    connect(m_writeJob, &QKeychain::Job::finished, this, &HarmonicConfigPage::onWritePasswordJobFinished);
+    m_writeJob->start();
 }
 
 void HarmonicConfigPage::reset()
@@ -124,34 +126,18 @@ void HarmonicConfigPage::reset()
     m_modelEdit->setText(group.readEntry("Model", ""));
     m_contextCheck->setChecked(group.readEntry("SendContext", true));
 
-    // Read API key from Secret Service (via QtKeychain).
-    // Use a local event loop to wait for the async result on the UI thread.
-    auto *job = new QKeychain::ReadPasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
-    job->setKey(QLatin1String(KEYCHAIN_KEY));
-    job->setAutoDelete(false);
-    QEventLoop loop;
-    connect(job, &QKeychain::ReadPasswordJob::finished, &loop, &QEventLoop::quit);
-    job->start();
-    loop.exec();
+    m_isInitializing = true;
 
-    if (job->error() == QKeychain::NoError) {
-        m_apiKeyEdit->setText(job->textData());
-    } else {
-        // Fall back to any legacy plain-text key in KConfig and migrate it.
-        const QString legacyKey = group.readEntry("ApiKey", QString());
-        m_apiKeyEdit->setText(legacyKey);
-        if (!legacyKey.isEmpty()) {
-            // Migrate: write to Secret Service, remove from KConfig.
-            auto *writeJob = new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
-            writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
-            writeJob->setTextData(legacyKey);
-            writeJob->setAutoDelete(true);
-            writeJob->start();
-            group.deleteEntry("ApiKey");
-            group.sync();
-        }
+    // Read API key from Secret Service (via QtKeychain) asynchronously.
+    if (m_readJob) {
+        disconnect(m_readJob, nullptr, this, nullptr);
+        m_readJob->deleteLater();
     }
-    job->deleteLater();
+    m_readJob = new QKeychain::ReadPasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
+    m_readJob->setKey(QLatin1String(KEYCHAIN_KEY));
+    m_readJob->setAutoDelete(false);
+    connect(m_readJob, &QKeychain::Job::finished, this, &HarmonicConfigPage::onReadPasswordJobFinished);
+    m_readJob->start();
 }
 
 void HarmonicConfigPage::defaults()
@@ -161,4 +147,75 @@ void HarmonicConfigPage::defaults()
     m_modelEdit->clear();
     m_apiKeyEdit->clear();
     m_contextCheck->setChecked(true);
+}
+
+void HarmonicConfigPage::onReadPasswordJobFinished()
+{
+    if (!m_readJob) {
+        return;
+    }
+
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+
+    if (m_readJob->error() == QKeychain::NoError) {
+        m_apiKeyEdit->setText(m_readJob->textData());
+    } else {
+        // Fall back to any legacy plain-text key in KConfig and migrate it.
+        const QString legacyKey = group.readEntry("ApiKey", QString());
+        m_apiKeyEdit->setText(legacyKey);
+        if (!legacyKey.isEmpty()) {
+            // Migrate: write to Secret Service, then remove from KConfig.
+            if (m_migrateJob) {
+                disconnect(m_migrateJob, nullptr, this, nullptr);
+                m_migrateJob->deleteLater();
+            }
+            m_migrateJob = new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
+            m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
+            m_migrateJob->setTextData(legacyKey);
+            m_migrateJob->setAutoDelete(false);
+            connect(m_migrateJob, &QKeychain::Job::finished, this, &HarmonicConfigPage::onMigratePasswordJobFinished);
+            m_migrateJob->start();
+        }
+    }
+
+    m_readJob->deleteLater();
+    m_readJob = nullptr;
+    m_isInitializing = false;
+}
+
+void HarmonicConfigPage::onWritePasswordJobFinished()
+{
+    if (!m_writeJob) {
+        return;
+    }
+
+    // Only delete legacy key if write succeeded
+    if (m_writeJob->error() == QKeychain::NoError) {
+        KSharedConfig::Ptr config = KSharedConfig::openConfig();
+        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+        group.deleteEntry("ApiKey");
+        group.sync();
+    }
+
+    m_writeJob->deleteLater();
+    m_writeJob = nullptr;
+}
+
+void HarmonicConfigPage::onMigratePasswordJobFinished()
+{
+    if (!m_migrateJob) {
+        return;
+    }
+
+    // Only delete legacy key if migration write succeeded
+    if (m_migrateJob->error() == QKeychain::NoError) {
+        KSharedConfig::Ptr config = KSharedConfig::openConfig();
+        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+        group.deleteEntry("ApiKey");
+        group.sync();
+    }
+
+    m_migrateJob->deleteLater();
+    m_migrateJob = nullptr;
 }

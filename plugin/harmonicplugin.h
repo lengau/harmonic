@@ -12,6 +12,9 @@
 
 class QAction;
 class HarmonicChatWidget;
+namespace QKeychain {
+class ReadPasswordJob;
+}
 namespace KTextEditor {
 class Document;
 }
@@ -41,9 +44,11 @@ private Q_SLOTS:
     void vibecode();
     void updateChatContext();
     void handleVibecodeFinished();
+    void onVibecodeApiKeyJobFinished();
 
 private:
     void showStatusMessage(const QString &message, int timeoutMs = 0) const;
+    void startVibecodeGeneration();
 
     KTextEditor::MainWindow *m_mainWindow;
     HarmonicPlugin *m_plugin;
@@ -53,6 +58,11 @@ private:
     QFutureWatcher<QString> *m_vibecodeWatcher = nullptr;
     QPointer<KTextEditor::Document> m_pendingDocument;
     int m_pendingInsertLine = -1;
+    
+    // Async API key reading for vibecode
+    QKeychain::ReadPasswordJob *m_vibecodeApiKeyJob = nullptr;
+    QString m_vibecodePrompt;
+    QString m_vibecodeApiKey;
 };
 
 #endif // HARMONICPLUGIN_H
