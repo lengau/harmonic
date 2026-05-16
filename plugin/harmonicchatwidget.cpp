@@ -350,8 +350,9 @@ void HarmonicChatWidget::sendMessage()
             return;
         }
 
-        if (!m_acpSessionReady) {
+        if (!m_acpSessionReady || m_acpSessionCwd != cwd) {
             m_acpInitializing = true;
+            m_acpSessionReady = false;
             m_pendingAcpPrompt = prompt;
             m_acpSessionCwd = cwd;
             startStreaming();
@@ -519,13 +520,16 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 
 void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
 {
-    if (error != QProcess::FailedToStart || !m_process) {
+    if (!m_process) {
         return;
     }
 
     const QString errorString = m_process->errorString();
     finishStreaming();
-    appendMessage(QStringLiteral("error"), i18n("Failed to start backend: %1", errorString));
+    appendMessage(QStringLiteral("error"),
+                  error == QProcess::FailedToStart
+                      ? i18n("Failed to start backend: %1", errorString)
+                      : i18n("Backend process error: %1", errorString));
 
     m_input->setFocus();
     m_process->deleteLater();
@@ -778,33 +782,14 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description,
             m_permissionLayout->addWidget(button);
         }
     } else {
-        QJsonArray promptOptions = options;
-        if (promptOptions.isEmpty()) {
-            promptOptions = QJsonArray {
-                QJsonObject {
-                    {QStringLiteral("optionId"), QStringLiteral("allow-once")},
-                    {QStringLiteral("name"), i18n("Allow")},
-                    {QStringLiteral("kind"), QStringLiteral("allow_once")},
-                },
-                QJsonObject {
-                    {QStringLiteral("optionId"), QStringLiteral("allow-always")},
-                    {QStringLiteral("name"), i18n("Always Allow")},
-                    {QStringLiteral("kind"), QStringLiteral("allow_always")},
-                },
-                QJsonObject {
-                    {QStringLiteral("optionId"), QStringLiteral("reject-once")},
-                    {QStringLiteral("name"), i18n("Deny")},
-                    {QStringLiteral("kind"), QStringLiteral("reject_once")},
-                },
-            };
-        }
-
-        for (const QJsonValue &value : promptOptions) {
+        bool hasValidOption = false;
+        for (const QJsonValue &value : options) {
             const QJsonObject option = value.toObject();
             const QString optionId = option[QStringLiteral("optionId")].toString();
             if (optionId.isEmpty()) {
                 continue;
             }
+            hasValidOption = true;
 
             const QString name = option[QStringLiteral("name")].toString(optionId);
             const QString kind = option[QStringLiteral("kind")].toString();
@@ -819,6 +804,18 @@ void HarmonicChatWidget::showPermissionPrompt(const QString &description,
             connect(button, &QPushButton::clicked, this, [this, requestId, optionId]() {
                 if (m_acp && m_acp->isRunning()) {
                     m_acp->respondToPermission(requestId, optionId);
+                }
+                hidePermissionPrompt();
+            });
+            m_permissionLayout->addWidget(button);
+        }
+
+        if (!hasValidOption) {
+            auto *button = new QPushButton(i18n("Deny"), m_permissionBar);
+            button->setStyleSheet(QStringLiteral("background-color: #c62828; color: white;"));
+            connect(button, &QPushButton::clicked, this, [this, requestId]() {
+                if (m_acp && m_acp->isRunning()) {
+                    m_acp->denyPermission(requestId);
                 }
                 hidePermissionPrompt();
             });
