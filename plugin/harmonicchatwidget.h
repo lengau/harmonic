@@ -2,7 +2,6 @@
 #define HARMONICCHATWIDGET_H
 
 #include <QProcess>
-#include <QTextCursor>
 #include <QStringList>
 #include <QWidget>
 
@@ -35,11 +34,12 @@ private Q_SLOTS:
     void denyPermission();
 
 private:
-    void appendMessage(const QString &role, const QString &text);
+    void appendMessage(const QString &role,
+                       const QString &text,
+                       const QString &renderedHtml = QString());
     void refreshChatLog();
     void scrollChatToBottom();
     void startStreaming();
-    void clearStreamingState();
     void finishStreaming();
     void updatePrimaryButton();
     void showTypingIndicator();
@@ -49,6 +49,7 @@ private:
     void showNextHistoryMessage();
     void showPermissionPrompt(const QString &description);
     void hidePermissionPrompt();
+    void processStderrChunk(const QString &chunk, bool flushPartialLine);
     QString buildConversationPrompt(const QString &message);
 
     QTextEdit *m_chatLog;
@@ -61,19 +62,22 @@ private:
     QProcess *m_process;
     QString m_context;
     QString m_streamBuffer;
+    QString m_stderrLineBuffer;
+    QString m_stderrOutput;
     QString m_pendingMessage;
-    QTextCursor m_streamCursor;
     QStringList m_inputHistory;
     int m_historyPosition;
     int m_typingDots;
     bool m_isStreaming;
     bool m_waitingForFirstChunk;
     bool m_cancelRequested;
+    bool m_backendErrorReported;
     bool m_isDestroying = false;
 
     struct Message {
         QString role;
         QString content;
+        QString renderedHtml;
     };
     QList<Message> m_conversation;
 };

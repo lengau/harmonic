@@ -1,4 +1,5 @@
 #include "harmonicchatwidget.h"
+#include "harmonicmarkdown.h"
 
 #include <KConfigGroup>
 #include <KLocalizedString>
@@ -24,6 +25,8 @@
 #include <QtMath>
 
 namespace {
+constexpr int kInputVerticalPadding = 8;
+
 QString messageBackgroundForRole(const QString &role)
 {
     if (role == QStringLiteral("user")) {
@@ -59,17 +62,46 @@ bool isPermissionPrompt(const QString &text)
         || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive);
 }
 
-QString renderMessageHtml(const QString &role, const QString &text)
+QString renderMessageHtml(const QString &role, const QString &text, bool textIsHtml = false)
 {
+    if (role == QStringLiteral("status")) {
+        return QStringLiteral(
+                   "<div style=\"background-color:%1; border-bottom:1px solid #e0e0e0; "
+                   "margin:0; padding:6px; color:#666666; font-style:italic; white-space:pre-wrap;\">%2</div>")
+            .arg(messageBackgroundForRole(role), text.toHtmlEscaped());
+    }
+
+    const QString body = textIsHtml ? text : text.toHtmlEscaped();
+    const QString contentStyle = textIsHtml ? QString() : QStringLiteral("white-space:pre-wrap;");
     return QStringLiteral(
                "<div style=\"background-color:%1; border-bottom:1px solid #e0e0e0; "
                "margin:0; padding:8px 6px 10px 6px;\">"
                "<div style=\"font-weight:600; margin-bottom:4px;\">%2</div>"
-               "<div style=\"white-space:pre-wrap;\">%3</div>"
+               "<div style=\"%3\">%4</div>"
                "</div>")
         .arg(messageBackgroundForRole(role),
              messageTitleForRole(role).toHtmlEscaped(),
-             text.toHtmlEscaped());
+             contentStyle,
+             body);
+}
+
+QString processErrorName(QProcess::ProcessError error)
+{
+    switch (error) {
+    case QProcess::FailedToStart:
+        return i18n("failed to start");
+    case QProcess::Crashed:
+        return i18n("crashed");
+    case QProcess::Timedout:
+        return i18n("timed out");
+    case QProcess::WriteError:
+        return i18n("write error");
+    case QProcess::ReadError:
+        return i18n("read error");
+    case QProcess::UnknownError:
+    default:
+        return i18n("unknown error");
+    }
 }
 }
 
@@ -152,8 +184,8 @@ private:
     void updateHeight()
     {
         const int lineHeight = QFontMetrics(font()).lineSpacing();
-        const int minHeight = lineHeight + (frameWidth() * 2) + 8;
-        const int maxHeight = (lineHeight * 4) + (frameWidth() * 2) + 8;
+        const int minHeight = lineHeight + (frameWidth() * 2) + kInputVerticalPadding;
+        const int maxHeight = (lineHeight * 4) + (frameWidth() * 2) + kInputVerticalPadding;
         const int documentHeight = qCeil(document()->documentLayout()->documentSize().height()) + (frameWidth() * 2);
         const int targetHeight = qBound(minHeight, documentHeight, maxHeight);
 
@@ -179,6 +211,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     , m_isStreaming(false)
     , m_waitingForFirstChunk(false)
     , m_cancelRequested(false)
+    , m_backendErrorReported(false)
 {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -288,7 +321,13 @@ void HarmonicChatWidget::clearSession()
     m_cancelRequested = true;
     cancelCurrentGeneration();
     m_pendingMessage.clear();
-    clearStreamingState();
+    m_isStreaming = false;
+    m_streamBuffer.clear();
+    m_stderrLineBuffer.clear();
+    m_stderrOutput.clear();
+    hideTypingIndicator();
+    hidePermissionPrompt();
+    updatePrimaryButton();
     m_conversation.clear();
     refreshChatLog();
 }
@@ -395,28 +434,13 @@ void HarmonicChatWidget::startStreaming()
 {
     m_isStreaming = true;
     m_cancelRequested = false;
+    m_backendErrorReported = false;
     m_streamBuffer.clear();
+    m_stderrLineBuffer.clear();
+    m_stderrOutput.clear();
     showTypingIndicator();
     updatePrimaryButton();
     refreshChatLog();
-
-    QTextCursor cursor = m_chatLog->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    cursor.insertBlock();
-    cursor.insertText(i18n("Harmonic: "));
-    m_streamCursor = cursor;
-    m_chatLog->setTextCursor(m_streamCursor);
-    scrollChatToBottom();
-}
-
-void HarmonicChatWidget::clearStreamingState()
-{
-    m_isStreaming = false;
-    m_streamBuffer.clear();
-    m_streamCursor = QTextCursor();
-    hideTypingIndicator();
-    hidePermissionPrompt();
-    updatePrimaryButton();
 }
 
 void HarmonicChatWidget::onReadyReadStdout()
@@ -432,14 +456,7 @@ void HarmonicChatWidget::onReadyReadStdout()
 
     m_streamBuffer += text;
     hideTypingIndicator();
-
-    if (m_streamCursor.isNull()) {
-        m_streamCursor = m_chatLog->textCursor();
-        m_streamCursor.movePosition(QTextCursor::End);
-    }
-    m_streamCursor.insertText(text);
-    m_chatLog->setTextCursor(m_streamCursor);
-    scrollChatToBottom();
+    refreshChatLog();
 }
 
 void HarmonicChatWidget::onReadyReadStderr()
@@ -448,15 +465,15 @@ void HarmonicChatWidget::onReadyReadStderr()
         return;
     }
 
-    const QString text = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
-    if (text.isEmpty() || !m_isStreaming || m_cancelRequested) {
+    const QString text = QString::fromUtf8(m_process->readAllStandardError());
+    if (text.isEmpty()) {
         return;
     }
 
-    if (isPermissionPrompt(text)) {
-        showPermissionPrompt(text);
-    } else {
-        appendMessage(QStringLiteral("status"), text);
+    m_stderrOutput += text;
+
+    if (!m_cancelRequested) {
+        processStderrChunk(text, false);
     }
 }
 
@@ -464,42 +481,61 @@ void HarmonicChatWidget::finishStreaming()
 {
     const bool cancelled = m_cancelRequested;
     const QString response = m_streamBuffer.trimmed();
-    clearStreamingState();
+    m_isStreaming = false;
+    m_streamBuffer.clear();
+    hideTypingIndicator();
+    hidePermissionPrompt();
+    updatePrimaryButton();
 
     if (!cancelled && !response.isEmpty()) {
-        m_conversation.append({QStringLiteral("assistant"), response});
+        appendMessage(QStringLiteral("assistant"), response, harmonicMarkdownToHtml(response));
+    } else {
+        refreshChatLog();
     }
-    refreshChatLog();
 }
 
 void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
-    Q_UNUSED(exitCode);
-    Q_UNUSED(status);
-
     if (m_process) {
         const QString remaining = QString::fromUtf8(m_process->readAllStandardOutput());
         if (!remaining.isEmpty()) {
             m_streamBuffer += remaining;
             hideTypingIndicator();
         }
-    }
 
-    const bool cancelled = m_cancelRequested;
-    const QString errorText = (!cancelled && m_process)
-        ? QString::fromUtf8(m_process->readAllStandardError()).trimmed()
-        : QString();
-
-    finishStreaming();
-
-    if (!cancelled && !errorText.isEmpty()) {
-        if (isPermissionPrompt(errorText)) {
-            showPermissionPrompt(errorText);
-        } else {
-            appendMessage(QStringLiteral("status"), errorText);
+        const QString stderrRemainder = QString::fromUtf8(m_process->readAllStandardError());
+        if (!stderrRemainder.isEmpty()) {
+            m_stderrOutput += stderrRemainder;
+            if (!m_cancelRequested) {
+                processStderrChunk(stderrRemainder, true);
+            }
+        } else if (!m_cancelRequested) {
+            processStderrChunk(QString(), true);
         }
     }
 
+    const bool cancelled = m_cancelRequested;
+    const bool backendFailed = !cancelled && (status != QProcess::NormalExit || exitCode != 0);
+    const QString stderrText = m_stderrOutput.trimmed();
+
+    finishStreaming();
+
+    if (backendFailed && !m_backendErrorReported) {
+        QString errorText = stderrText;
+        if (errorText.isEmpty()) {
+            errorText = i18n("Backend exited abnormally (exit code %1).", exitCode);
+            if (status != QProcess::NormalExit) {
+                errorText += QLatin1Char(' ');
+                errorText += i18n("The backend process crashed.");
+            }
+        }
+        appendMessage(QStringLiteral("error"), errorText);
+    }
+
+    m_cancelRequested = false;
+    m_backendErrorReported = false;
+    m_stderrLineBuffer.clear();
+    m_stderrOutput.clear();
     m_input->setFocus();
 
     if (m_process) {
@@ -517,22 +553,76 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 
 void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
 {
-    if (error != QProcess::FailedToStart || !m_process) {
+    if (!m_process) {
+        return;
+    }
+
+    if (error == QProcess::FailedToStart) {
+        const QString errorString = m_process->errorString();
+        finishStreaming();
+        appendMessage(QStringLiteral("error"), i18n("Failed to start backend: %1", errorString));
+
+        m_cancelRequested = false;
+        m_backendErrorReported = false;
+        m_stderrLineBuffer.clear();
+        m_stderrOutput.clear();
+        m_input->setFocus();
+        m_process->deleteLater();
+        m_process = nullptr;
+        return;
+    }
+
+    if (m_cancelRequested || m_isDestroying) {
         return;
     }
 
     const QString errorString = m_process->errorString();
     finishStreaming();
-    appendMessage(QStringLiteral("error"), i18n("Failed to start backend: %1", errorString));
+    appendMessage(QStringLiteral("error"),
+                  i18n("Backend process %1: %2", processErrorName(error), errorString));
+    m_backendErrorReported = true;
 
-    m_input->setFocus();
-    m_process->deleteLater();
-    m_process = nullptr;
+    if (m_process->state() != QProcess::NotRunning) {
+        m_process->kill();
+    }
 }
 
-void HarmonicChatWidget::appendMessage(const QString &role, const QString &text)
+void HarmonicChatWidget::processStderrChunk(const QString &chunk, bool flushPartialLine)
 {
-    m_conversation.append({role, text});
+    m_stderrLineBuffer += chunk;
+
+    int newlineIndex = m_stderrLineBuffer.indexOf(QLatin1Char('\n'));
+    while (newlineIndex >= 0) {
+        const QString line = m_stderrLineBuffer.left(newlineIndex).trimmed();
+        m_stderrLineBuffer.remove(0, newlineIndex + 1);
+        if (!line.isEmpty()) {
+            if (isPermissionPrompt(line)) {
+                showPermissionPrompt(line);
+            } else {
+                appendMessage(QStringLiteral("status"), line);
+            }
+        }
+        newlineIndex = m_stderrLineBuffer.indexOf(QLatin1Char('\n'));
+    }
+
+    if (flushPartialLine) {
+        const QString line = m_stderrLineBuffer.trimmed();
+        m_stderrLineBuffer.clear();
+        if (!line.isEmpty()) {
+            if (isPermissionPrompt(line)) {
+                showPermissionPrompt(line);
+            } else {
+                appendMessage(QStringLiteral("status"), line);
+            }
+        }
+    }
+}
+
+void HarmonicChatWidget::appendMessage(const QString &role,
+                                       const QString &text,
+                                       const QString &renderedHtml)
+{
+    m_conversation.append({role, text, renderedHtml});
     refreshChatLog();
 }
 
@@ -540,17 +630,16 @@ void HarmonicChatWidget::refreshChatLog()
 {
     QString html;
     for (const auto &msg : std::as_const(m_conversation)) {
-        html += renderMessageHtml(msg.role, msg.content);
+        const bool hasRenderedHtml = !msg.renderedHtml.isEmpty();
+        html += hasRenderedHtml
+            ? renderMessageHtml(msg.role, msg.renderedHtml, true)
+            : renderMessageHtml(msg.role, msg.content);
     }
     if (m_isStreaming && !m_streamBuffer.isEmpty()) {
         html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
     }
 
     m_chatLog->setHtml(html);
-    if (m_isStreaming) {
-        m_streamCursor = m_chatLog->textCursor();
-        m_streamCursor.movePosition(QTextCursor::End);
-    }
     scrollChatToBottom();
 }
 

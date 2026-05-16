@@ -36,6 +36,7 @@ add_library(harmonicplugin MODULE
     harmonicview.cpp
     harmonicconfigpage.cpp
     harmonicchatwidget.cpp
+    harmonicmarkdown.cpp
 )
 
 add_dependencies(harmonicplugin harmonic_rust_lib)
