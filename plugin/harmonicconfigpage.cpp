@@ -122,8 +122,18 @@ void HarmonicConfigPage::apply() {
         m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
         m_writeJob->setTextData(m_apiKeyEdit->text());
         m_writeJob->setAutoDelete(true);
-        connect(m_writeJob, &QKeychain::Job::finished, this,
-                &HarmonicConfigPage::onWritePasswordJobFinished);
+         
+        // Connect cleanup to the job itself, not to this page, so it runs even if
+        // the page is destroyed before the job finishes
+        QKeychain::WritePasswordJob *writeJob = m_writeJob;
+        connect(writeJob, &QKeychain::Job::finished, writeJob, [writeJob]() {
+            if (writeJob->error() == QKeychain::NoError) {
+                KSharedConfig::Ptr config = KSharedConfig::openConfig();
+                KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                group.deleteEntry("ApiKey");
+                group.sync();
+            }
+        });
         m_writeJob->start();
         m_apiKeyEdited = false;
     }
@@ -208,8 +218,18 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
             m_migrateJob->setTextData(legacyKey);
             m_migrateJob->setAutoDelete(true);
-            connect(m_migrateJob, &QKeychain::Job::finished, this,
-                    &HarmonicConfigPage::onMigratePasswordJobFinished);
+            
+            // Connect cleanup to the job itself, not to this page, so it runs even if
+            // the page is destroyed before the job finishes
+            QKeychain::WritePasswordJob *migrateJob = m_migrateJob;
+            connect(migrateJob, &QKeychain::Job::finished, migrateJob, [migrateJob]() {
+                if (migrateJob->error() == QKeychain::NoError) {
+                    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+                    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                    group.deleteEntry("ApiKey");
+                    group.sync();
+                }
+            });
             m_migrateJob->start();
         }
     }
