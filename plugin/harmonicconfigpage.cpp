@@ -97,6 +97,13 @@ void HarmonicConfigPage::apply() {
   group.writeEntry("SendContext", m_contextCheck->isChecked());
   group.sync();
 
+  // Cancel any pending migration before starting a write to prevent race conditions
+  if (m_migrateJob) {
+    disconnect(m_migrateJob, nullptr, this, nullptr);
+    m_migrateJob->deleteLater();
+    m_migrateJob = nullptr;
+  }
+
   // Store the API key in the Secret Service (via QtKeychain) asynchronously.
   // Only delete the legacy entry after the write succeeds.
   if (m_writeJob) {

@@ -590,9 +590,11 @@ void HarmonicChatWidget::onAcpError(const QString &message) {
         appendMessage(QStringLiteral("error"), message);
     }
 
-    if (m_acp->isRunning()) {
-        resetAcpState();
+    if (!m_acpInitialized && m_acp->isRunning()) {
+        m_acp->stop();
     }
+
+    resetAcpState();
 
     m_cancelRequested = false;
     m_input->setFocus();
