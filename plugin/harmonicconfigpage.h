@@ -7,6 +7,11 @@ class QComboBox;
 class QLineEdit;
 class QCheckBox;
 
+namespace QKeychain {
+class WritePasswordJob;
+class ReadPasswordJob;
+}
+
 class HarmonicConfigPage : public KTextEditor::ConfigPage
 {
     Q_OBJECT
@@ -24,12 +29,22 @@ public Q_SLOTS:
     void reset() override;
     void defaults() override;
 
+private Q_SLOTS:
+    void onReadPasswordJobFinished();
+    void onWritePasswordJobFinished();
+    void onMigratePasswordJobFinished();
+
 private:
     QComboBox *m_backendCombo;
     QLineEdit *m_commandEdit;
     QLineEdit *m_apiKeyEdit;
     QCheckBox *m_contextCheck;
     QLineEdit *m_modelEdit;
+    
+    QKeychain::ReadPasswordJob *m_readJob = nullptr;
+    QKeychain::WritePasswordJob *m_writeJob = nullptr;
+    QKeychain::WritePasswordJob *m_migrateJob = nullptr;
+    bool m_isInitializing = false;
 };
 
 #endif // HARMONICCONFIGPAGE_H

@@ -13,8 +13,28 @@ include(KDECMakeSettings)
 include(KDECompilerSettings)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
-find_package(Qt6Keychain REQUIRED CONFIG PATHS /usr/lib/x86_64-linux-gnu/cmake)
+find_package(Qt6Keychain CONFIG QUIET)
+if(NOT Qt6Keychain_FOUND)
+    find_package(Qt6Keychain REQUIRED)
+endif()
 find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
+
+# Find Qt6Keychain include directories
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(Qt6Keychain_PKG QUIET Qt6Keychain)
+endif()
+
+if(NOT Qt6Keychain_INCLUDE_DIRS AND Qt6Keychain_PKG_INCLUDE_DIRS)
+    set(Qt6Keychain_INCLUDE_DIRS ${Qt6Keychain_PKG_INCLUDE_DIRS})
+endif()
+
+# Fallback: search common locations
+if(NOT Qt6Keychain_INCLUDE_DIRS)
+    find_path(Qt6Keychain_INCLUDE_DIRS NAMES keychain.h
+        PATHS /usr/include /usr/local/include /usr/include/qt6keychain
+        PATH_SUFFIXES qt6keychain)
+endif()
 
 # Build the Rust core library
 find_program(CARGO cargo REQUIRED)
@@ -45,7 +65,7 @@ add_dependencies(harmonicplugin harmonic_rust_lib)
 
 target_include_directories(harmonicplugin PRIVATE
     ${CMAKE_SOURCE_DIR}/../include
-    /usr/include/qt6keychain
+    ${Qt6Keychain_INCLUDE_DIRS}
 )
 
 # Set rpath so the plugin finds libharmonic.so relative to its location

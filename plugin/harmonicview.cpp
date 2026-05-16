@@ -13,7 +13,6 @@
 #include <keychain.h>
 
 #include <QAction>
-#include <QEventLoop>
 #include <QFileInfo>
 #include <QIcon>
 #include <QInputDialog>
@@ -147,41 +146,67 @@ void HarmonicView::vibecode() {
         }
     }
 
-    // Capture document state and config on the UI thread before launching work.
-    const int insertLine = view->cursorPosition().line();
+    // Store the prompt and prepare for async API key read
+    m_vibecodePrompt = prompt;
+    m_pendingDocument = doc;
+    m_pendingInsertLine = view->cursorPosition().line();
+    m_vibecodeAction->setEnabled(false);
+    showStatusMessage(i18n("Harmonic: Reading credentials..."));
+
+    // Read API key asynchronously from Secret Service
+    if (m_vibecodeApiKeyJob) {
+        disconnect(m_vibecodeApiKeyJob, nullptr, this, nullptr);
+        m_vibecodeApiKeyJob->deleteLater();
+    }
+    m_vibecodeApiKeyJob = new QKeychain::ReadPasswordJob(QStringLiteral("Harmonic"), this);
+    m_vibecodeApiKeyJob->setKey(QStringLiteral("ApiKey"));
+    m_vibecodeApiKeyJob->setAutoDelete(false);
+    connect(m_vibecodeApiKeyJob, &QKeychain::Job::finished, this, &HarmonicView::onVibecodeApiKeyJobFinished);
+    m_vibecodeApiKeyJob->start();
+}
+
+void HarmonicView::onVibecodeApiKeyJobFinished()
+{
+    if (!m_vibecodeApiKeyJob) {
+        return;
+    }
+
+    // Get the API key from Secret Service, or fall back to legacy KConfig
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group = config->group(QStringLiteral("Harmonic"));
+    if (m_vibecodeApiKeyJob->error() == QKeychain::NoError) {
+        m_vibecodeApiKey = m_vibecodeApiKeyJob->textData();
+    } else {
+        m_vibecodeApiKey = group.readEntry("ApiKey", QString());
+    }
+
+    m_vibecodeApiKeyJob->deleteLater();
+    m_vibecodeApiKeyJob = nullptr;
+
+    // Now that we have the API key, start the actual generation
+    startVibecodeGeneration();
+}
+
+void HarmonicView::startVibecodeGeneration()
+{
+    if (!m_pendingDocument || m_vibecodePrompt.isEmpty()) {
+        m_vibecodeAction->setEnabled(true);
+        return;
+    }
+
+    KTextEditor::Document *doc = m_pendingDocument;
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QStringLiteral("Harmonic"));
     bool sendContext = group.readEntry("SendContext", true);
     QString docText = sendContext ? doc->text() : QString();
 
-    QByteArray promptBytes = prompt.toUtf8();
+    QByteArray promptBytes = m_vibecodePrompt.toUtf8();
     QByteArray contextBytes = docText.toUtf8();
     QByteArray backendBytes = group.readEntry("Backend", "copilot").toUtf8();
     QByteArray commandBytes = group.readEntry("Command", "copilot").toUtf8();
     QByteArray modelBytes = group.readEntry("Model", "").toUtf8();
+    QByteArray apiKeyBytes = m_vibecodeApiKey.toUtf8();
 
-    // Read API key from Secret Service; fall back to legacy KConfig entry.
-    QString apiKey;
-    {
-        auto *job = new QKeychain::ReadPasswordJob(QStringLiteral("Harmonic"), this);
-        job->setKey(QStringLiteral("ApiKey"));
-        job->setAutoDelete(false);
-        QEventLoop loop;
-        connect(job, &QKeychain::ReadPasswordJob::finished, &loop, &QEventLoop::quit);
-        job->start();
-        loop.exec();
-        if (job->error() == QKeychain::NoError) {
-            apiKey = job->textData();
-        } else {
-            apiKey = group.readEntry("ApiKey", QString());
-        }
-        job->deleteLater();
-    }
-    QByteArray apiKeyBytes = apiKey.toUtf8();
-
-    m_pendingDocument = doc;
-    m_pendingInsertLine = insertLine;
-    m_vibecodeAction->setEnabled(false);
     showStatusMessage(i18n("Harmonic: Generating..."));
 
     m_vibecodeWatcher->setFuture(QtConcurrent::run([promptBytes,
