@@ -83,7 +83,11 @@ jobs:
           '
 
       - name: Run lint checks
+        env:
+          CLANG_FORMAT_FILES: ${{ steps.clang-format-targets.outputs.files }}
         run: |
+          printf '%s' "$CLANG_FORMAT_FILES" \
+            | sudo lxc exec harmonic-ci -- bash -c 'cat > /root/harmonic/.clang-format-targets'
           sudo lxc exec harmonic-ci -- bash -c '
             set -euo pipefail
             export PATH="/snap/bin:$PATH"
@@ -99,9 +103,10 @@ jobs:
               cp "${fallback_style_file}" "${style_file}"
               trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
             fi
-            mapfile -t style_targets < <(printf "%s\n" "${{ steps.clang-format-targets.outputs.files }}")
+            mapfile -t style_targets < /root/harmonic/.clang-format-targets
+            rm -f /root/harmonic/.clang-format-targets
             if [ "${#style_targets[@]}" -gt 0 ] && [ -n "${style_targets[0]}" ]; then
-              clang-format --style=file --dry-run --Werror "${style_targets[@]}"
+              clang-format --style=file --dry-run --Werror -- "${style_targets[@]}"
             else
               echo "No C/C++ files changed; skipping clang-format check."
             fi
