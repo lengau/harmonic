@@ -126,18 +126,18 @@ void HarmonicConfigPage::apply() {
     // ensures the legacy plaintext key is deleted from KConfig regardless of
     // widget lifetime.
     QKeychain::WritePasswordJob *job = m_writeJob;
-    HarmonicConfigPage *pagePtr = this;
+    QPointer<HarmonicConfigPage> pageGuard(this);
     connect(m_writeJob, &QKeychain::Job::finished, nullptr,
-                [job, config, pagePtr]() {
-        if (job->error() == QKeychain::NoError) {
-            KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-            group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-            group.sync();
-        }
-        // Clear the stale pointer only if the page still exists
-        if (pagePtr) {
-            pagePtr->m_writeJob = nullptr;
-        }
+            [job, config, pageGuard]() {
+      if (job->error() == QKeychain::NoError) {
+        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+        group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+        group.sync();
+      }
+      // Clear the stale pointer only if the page still exists
+      if (pageGuard) {
+        pageGuard->m_writeJob = nullptr;
+      }
     });
     m_writeJob->start();
 }
@@ -213,17 +213,17 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             // ensures the legacy plaintext key is deleted from KConfig regardless of
             // widget lifetime.
             QKeychain::WritePasswordJob *job = m_migrateJob;
-            HarmonicConfigPage *pagePtr = this;
+            QPointer<HarmonicConfigPage> pageGuard(this);
             connect(m_migrateJob, &QKeychain::Job::finished, nullptr,
-                    [job, config, pagePtr]() {
+                    [job, config, pageGuard]() {
               if (job->error() == QKeychain::NoError) {
                 KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
                 group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
                 group.sync();
               }
               // Clear the stale pointer only if the page still exists
-              if (pagePtr) {
-                pagePtr->m_migrateJob = nullptr;
+              if (pageGuard) {
+                pageGuard->m_migrateJob = nullptr;
               }
             });
             m_migrateJob->start();
