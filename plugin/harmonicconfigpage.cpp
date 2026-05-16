@@ -98,7 +98,8 @@ void HarmonicConfigPage::apply() {
   group.writeEntry("SendContext", m_contextCheck->isChecked());
   group.sync();
 
-  // Cancel any pending migration before starting a write to prevent race conditions
+  // Cancel any pending migration before starting a write to prevent race
+  // conditions
   if (m_migrateJob) {
     disconnect(m_migrateJob, nullptr, this, nullptr);
     m_migrateJob->deleteLater();
@@ -123,14 +124,13 @@ void HarmonicConfigPage::apply() {
   // ensures the legacy plaintext key is deleted from KConfig regardless of
   // widget lifetime.
   QKeychain::WritePasswordJob *job = m_writeJob;
-  connect(m_writeJob, &QKeychain::Job::finished, nullptr,
-          [job, config]() {
-            if (job->error() == QKeychain::NoError) {
-              KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-              group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-              group.sync();
-            }
-          });
+  connect(m_writeJob, &QKeychain::Job::finished, nullptr, [job, config]() {
+    if (job->error() == QKeychain::NoError) {
+      KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+      group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+      group.sync();
+    }
+  });
   m_writeJob->start();
 }
 
@@ -188,8 +188,9 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
     m_apiKeyEdit->setText(legacyKey);
     if (!legacyKey.isEmpty()) {
       // Migrate: write to Secret Service, then remove from KConfig.
-      // Job is created with nullptr parent so it persists even if this config page
-      // is destroyed before the migration completes. Use QPointer to guard page.
+      // Job is created with nullptr parent so it persists even if this config
+      // page is destroyed before the migration completes. Use QPointer to guard
+      // page.
       if (m_migrateJob) {
         disconnect(m_migrateJob, nullptr, this, nullptr);
         m_migrateJob->deleteLater();
@@ -204,15 +205,14 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
       // ensures the legacy plaintext key is deleted from KConfig regardless of
       // widget lifetime.
       QKeychain::WritePasswordJob *job = m_migrateJob;
-      connect(m_migrateJob, &QKeychain::Job::finished, nullptr,
-              [job, config]() {
-                if (job->error() == QKeychain::NoError) {
-                  KConfigGroup group =
-                      config->group(QLatin1String(CONFIG_GROUP));
-                  group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-                  group.sync();
-                }
-              });
+      connect(
+          m_migrateJob, &QKeychain::Job::finished, nullptr, [job, config]() {
+            if (job->error() == QKeychain::NoError) {
+              KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+              group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+              group.sync();
+            }
+          });
       m_migrateJob->start();
     }
   }

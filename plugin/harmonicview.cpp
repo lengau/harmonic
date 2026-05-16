@@ -22,11 +22,9 @@
 #include <QStatusBar>
 #include <QtConcurrent/QtConcurrentRun>
 
-HarmonicView::HarmonicView(HarmonicPlugin* plugin,
-                           KTextEditor::MainWindow* mainWindow)
-    : QObject(mainWindow),
-      KXMLGUIClient(),
-      m_mainWindow(mainWindow),
+HarmonicView::HarmonicView(HarmonicPlugin *plugin,
+                           KTextEditor::MainWindow *mainWindow)
+    : QObject(mainWindow), KXMLGUIClient(), m_mainWindow(mainWindow),
       m_plugin(plugin) {
   setComponentName(QStringLiteral("harmonicplugin"), i18n("Harmonic"));
   setXMLFile(QStringLiteral("harmonicplugin.rc"));
@@ -76,14 +74,14 @@ HarmonicView::~HarmonicView() {
 }
 
 void HarmonicView::updateChatContext() {
-  auto* view = m_mainWindow->activeView();
+  auto *view = m_mainWindow->activeView();
   if (!view || !view->document()) {
     m_chatWidget->setContext(QString());
     m_chatWidget->setWorkingDirectory(QString());
     return;
   }
 
-  auto* document = view->document();
+  auto *document = view->document();
   m_chatWidget->setContext(document->text());
 
   QString workingDirectory;
@@ -94,9 +92,9 @@ void HarmonicView::updateChatContext() {
   m_chatWidget->setWorkingDirectory(workingDirectory);
 }
 
-void HarmonicView::showStatusMessage(const QString& message,
+void HarmonicView::showStatusMessage(const QString &message,
                                      int timeoutMs) const {
-  if (auto* window = qobject_cast<QMainWindow*>(m_mainWindow->window())) {
+  if (auto *window = qobject_cast<QMainWindow *>(m_mainWindow->window())) {
     window->statusBar()->showMessage(message, timeoutMs);
   }
 }
@@ -107,19 +105,19 @@ void HarmonicView::vibecode() {
     return;
   }
 
-  auto* view = m_mainWindow->activeView();
+  auto *view = m_mainWindow->activeView();
   if (!view) {
     QMessageBox::warning(m_mainWindow->window(), i18n("Harmonic"),
                          i18n("Please open a file first."));
     return;
   }
 
-  QWidget* parentWidget = m_mainWindow->window();
+  QWidget *parentWidget = m_mainWindow->window();
   if (!parentWidget) {
     parentWidget = view->focusProxy();
   }
 
-  auto* doc = view->document();
+  auto *doc = view->document();
   QString prompt;
 
   // If there's a selection, use that as the prompt
@@ -130,7 +128,7 @@ void HarmonicView::vibecode() {
     int line = view->cursorPosition().line();
     prompt = doc->line(line).trimmed();
     // Strip common comment prefixes
-    for (const auto& prefix :
+    for (const auto &prefix :
          {QStringLiteral("//"), QStringLiteral("#"), QStringLiteral("/*"),
           QStringLiteral("*/"), QStringLiteral("*"), QStringLiteral("--")}) {
       if (prompt.startsWith(prefix)) {
@@ -185,14 +183,14 @@ void HarmonicView::onVibecodeApiKeyJobFinished() {
     m_vibecodeApiKey = group.readEntry("ApiKey", QString());
     // Migrate legacy plaintext key to QtKeychain on fallback success
     if (!m_vibecodeApiKey.isEmpty()) {
-      auto* migrateJob =
+      auto *migrateJob =
           new QKeychain::WritePasswordJob(QStringLiteral("Harmonic"), nullptr);
       migrateJob->setKey(QStringLiteral("ApiKey"));
       migrateJob->setTextData(m_vibecodeApiKey);
       migrateJob->setAutoDelete(true);
       // Use nullptr context so lambda executes even if view is destroyed. This
       // ensures plaintext cleanup happens regardless of widget lifetime.
-      auto* migrateJobPtr = migrateJob;
+      auto *migrateJobPtr = migrateJob;
       connect(migrateJob, &QKeychain::Job::finished, nullptr,
               [migrateJobPtr, config]() {
                 if (migrateJobPtr->error() == QKeychain::NoError) {
@@ -218,7 +216,7 @@ void HarmonicView::startVibecodeGeneration() {
     return;
   }
 
-  KTextEditor::Document* doc = m_pendingDocument;
+  KTextEditor::Document *doc = m_pendingDocument;
   KSharedConfig::Ptr config = KSharedConfig::openConfig();
   KConfigGroup group = config->group(QStringLiteral("Harmonic"));
   bool sendContext = group.readEntry("SendContext", true);
@@ -239,9 +237,9 @@ void HarmonicView::startVibecodeGeneration() {
         // QByteArrays captured by value — safe because harmonic_generate() is
         // synchronous and completes before the lambda returns, keeping the
         // buffers alive.
-        const char* context =
+        const char *context =
             contextBytes.isEmpty() ? nullptr : contextBytes.constData();
-        char* result = harmonic_generate(
+        char *result = harmonic_generate(
             promptBytes.constData(), context, backendBytes.constData(),
             commandBytes.constData(),
             modelBytes.isEmpty() ? nullptr : modelBytes.constData(),
@@ -261,7 +259,7 @@ void HarmonicView::handleVibecodeFinished() {
   m_vibecodeAction->setEnabled(true);
 
   const QString generated = m_vibecodeWatcher->result();
-  QWidget* parentWidget = m_mainWindow->window();
+  QWidget *parentWidget = m_mainWindow->window();
 
   if (generated.startsWith(QStringLiteral("// Error:"))) {
     showStatusMessage(i18n("Harmonic: Generation failed"), 5000);
