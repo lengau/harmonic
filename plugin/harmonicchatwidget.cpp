@@ -132,8 +132,9 @@ private:
     void updateHeight()
     {
         const int lineHeight = QFontMetrics(font()).lineSpacing();
-        const int minHeight = lineHeight + (frameWidth() * 2) + 8;
-        const int maxHeight = (lineHeight * 4) + (frameWidth() * 2) + 8;
+        constexpr int verticalPadding = 8;
+        const int minHeight = lineHeight + (frameWidth() * 2) + verticalPadding;
+        const int maxHeight = (lineHeight * 4) + (frameWidth() * 2) + verticalPadding;
         const int documentHeight = qCeil(document()->documentLayout()->documentSize().height()) + (frameWidth() * 2);
         const int targetHeight = qBound(minHeight, documentHeight, maxHeight);
 
