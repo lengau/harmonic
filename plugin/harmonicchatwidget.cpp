@@ -465,7 +465,7 @@ void HarmonicChatWidget::finishStreaming() {
 void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus status) {
     if (m_process) {
         const QString remaining = QString::fromUtf8(m_process->readAllStandardOutput());
-        if (!remaining.isEmpty()) {
+        if (!remaining.isEmpty() && m_isStreaming) {
             m_streamBuffer += remaining;
             hideTypingIndicator();
         }
