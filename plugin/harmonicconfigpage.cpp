@@ -12,6 +12,7 @@
 #include <QGroupBox>
 #include <QIcon>
 #include <QLineEdit>
+#include <QPointer>
 #include <QVBoxLayout>
 
 static const char *CONFIG_GROUP = "Harmonic";
@@ -127,7 +128,7 @@ void HarmonicConfigPage::apply() {
         // the page is destroyed before the job finishes. Capture page as QPointer
         // so it auto-nullifies if page is destroyed.
         QKeychain::WritePasswordJob *writeJob = m_writeJob;
-        HarmonicConfigPage *pagePtr = this;
+        QPointer<HarmonicConfigPage> pagePtr = this;
         connect(writeJob, &QKeychain::Job::finished, writeJob,
                 [writeJob, pagePtr]() {
                     if (writeJob->error() == QKeychain::NoError) {
@@ -228,10 +229,10 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             m_migrateJob->setAutoDelete(true);
 
             // Connect cleanup to the job itself, not to this page, so it runs even if
-            // the page is destroyed before the job finishes. Capture page so we can
-            // safely clear the member pointer.
+            // the page is destroyed before the job finishes. Capture page as QPointer
+            // so it auto-nullifies if page is destroyed.
             QKeychain::WritePasswordJob *migrateJob = m_migrateJob;
-            HarmonicConfigPage *pagePtr = this;
+            QPointer<HarmonicConfigPage> pagePtr = this;
             connect(migrateJob, &QKeychain::Job::finished, migrateJob,
                     [migrateJob, pagePtr]() {
                         if (migrateJob->error() == QKeychain::NoError) {
