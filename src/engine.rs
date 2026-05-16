@@ -38,29 +38,55 @@ impl Default for EngineConfig {
 }
 
 /// Generate code using the configured AI backend.
-pub fn generate(prompt: &str, context: Option<&str>, config: &EngineConfig) -> Result<String, EngineError> {
+pub fn generate(
+    prompt: &str,
+    context: Option<&str>,
+    config: &EngineConfig,
+) -> Result<String, EngineError> {
     let context_for_prompt = if config.send_context { context } else { None };
 
     let full_prompt = match context_for_prompt {
         Some(ctx) => format!(
             "Given the following code context:\n```\n{ctx}\n```\n\n{prompt}\n\nRespond with ONLY the generated code, no explanation."
         ),
-        None => format!(
-            "{prompt}\n\nRespond with ONLY the generated code, no explanation."
-        ),
+        None => format!("{prompt}\n\nRespond with ONLY the generated code, no explanation."),
     };
 
     match config.backend.as_str() {
-        "opencode" => run_opencode(&config.command, &full_prompt, &config.model, &config.api_key),
-        "claude-code" => run_claude_code(&config.command, &full_prompt, &config.model, &config.api_key),
+        "opencode" => run_opencode(
+            &config.command,
+            &full_prompt,
+            &config.model,
+            &config.api_key,
+        ),
+        "claude-code" => run_claude_code(
+            &config.command,
+            &full_prompt,
+            &config.model,
+            &config.api_key,
+        ),
         "copilot" => run_copilot(&config.command, &full_prompt),
         "custom" => run_custom(&config.command, &full_prompt),
-        _ => run_opencode(&config.command, &full_prompt, &config.model, &config.api_key),
+        _ => run_opencode(
+            &config.command,
+            &full_prompt,
+            &config.model,
+            &config.api_key,
+        ),
     }
 }
 
-fn run_opencode(command: &str, prompt: &str, model: &str, api_key: &str) -> Result<String, EngineError> {
-    let cmd = if command.is_empty() { "opencode" } else { command };
+fn run_opencode(
+    command: &str,
+    prompt: &str,
+    model: &str,
+    api_key: &str,
+) -> Result<String, EngineError> {
+    let cmd = if command.is_empty() {
+        "opencode"
+    } else {
+        command
+    };
 
     let mut args = vec!["-p", prompt, "-f", "json", "-q"];
     if !model.is_empty() {
@@ -75,7 +101,8 @@ fn run_opencode(command: &str, prompt: &str, model: &str, api_key: &str) -> Resu
         proc.env("OPENAI_API_KEY", api_key);
     }
 
-    let output = proc.output()
+    let output = proc
+        .output()
         .map_err(|e| EngineError::SpawnFailed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
@@ -97,8 +124,17 @@ fn run_opencode(command: &str, prompt: &str, model: &str, api_key: &str) -> Resu
     }
 }
 
-fn run_claude_code(command: &str, prompt: &str, model: &str, api_key: &str) -> Result<String, EngineError> {
-    let cmd = if command.is_empty() { "claude" } else { command };
+fn run_claude_code(
+    command: &str,
+    prompt: &str,
+    model: &str,
+    api_key: &str,
+) -> Result<String, EngineError> {
+    let cmd = if command.is_empty() {
+        "claude"
+    } else {
+        command
+    };
 
     let mut proc = Command::new(cmd);
     proc.args(["--print", prompt]);
@@ -109,7 +145,8 @@ fn run_claude_code(command: &str, prompt: &str, model: &str, api_key: &str) -> R
         proc.env("ANTHROPIC_API_KEY", api_key);
     }
 
-    let output = proc.output()
+    let output = proc
+        .output()
         .map_err(|e| EngineError::SpawnFailed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
@@ -122,7 +159,11 @@ fn run_claude_code(command: &str, prompt: &str, model: &str, api_key: &str) -> R
 }
 
 fn run_copilot(command: &str, prompt: &str) -> Result<String, EngineError> {
-    let cmd = if command.is_empty() { "copilot" } else { command };
+    let cmd = if command.is_empty() {
+        "copilot"
+    } else {
+        command
+    };
 
     let output = Command::new(cmd)
         .args(["-p", prompt, "--output-format", "text", "--silent"])
@@ -140,7 +181,9 @@ fn run_copilot(command: &str, prompt: &str) -> Result<String, EngineError> {
 
 fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
     if command.is_empty() {
-        return Err(EngineError::SpawnFailed("No custom command configured".to_string()));
+        return Err(EngineError::SpawnFailed(
+            "No custom command configured".to_string(),
+        ));
     }
 
     let output = Command::new("sh")
@@ -165,9 +208,7 @@ fn shell_escape(s: &str) -> String {
 fn strip_code_fences(s: &str) -> String {
     let trimmed = s.trim();
     if trimmed.starts_with("```") {
-        let without_opening = trimmed
-            .strip_prefix("```")
-            .unwrap_or(trimmed);
+        let without_opening = trimmed.strip_prefix("```").unwrap_or(trimmed);
         let after_lang = without_opening
             .find('\n')
             .map(|i| &without_opening[i + 1..])
@@ -199,7 +240,7 @@ impl std::fmt::Display for EngineError {
 
 impl From<EngineError> for io::Error {
     fn from(e: EngineError) -> Self {
-        io::Error::new(io::ErrorKind::Other, e.to_string())
+        io::Error::other(e.to_string())
     }
 }
 

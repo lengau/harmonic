@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine clang-format targets
+        id: clang-format-targets
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}" --depth=1
+            base_commit="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+            diff_range="${base_commit}..HEAD"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            diff_range="HEAD^..HEAD"
+          else
+            diff_range="HEAD"
+          fi
+
+          mapfile -t changed_cpp_files < <(
+            git diff --name-only --diff-filter=ACMR "${diff_range}" -- 'include/*.h' 'plugin/*.h' 'plugin/*.cpp'
+          )
+
+          {
+            echo "files<<EOF"
+            printf '%s\n' "${changed_cpp_files[@]}"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Set up LXD
+        uses: canonical/setup-lxd@v0.1.1
+
+      - name: Launch Ubuntu 26.04 container
+        run: |
+          sudo lxc launch ubuntu:26.04 harmonic-ci \
+            --config limits.cpu=4 \
+            --config limits.memory=8GB
+          sudo lxc exec harmonic-ci -- cloud-init status --wait
+
+      - name: Copy source into container
+        run: |
+          tar -czf - --exclude=.git --exclude=target . \
+            | sudo lxc exec harmonic-ci -- bash -c \
+              'mkdir -p /root/harmonic && tar -xzf - -C /root/harmonic'
+
+      - name: Install system dependencies
+        run: |
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y software-properties-common
+            add-apt-repository -y universe
+            apt-get update -y
+            apt-get install -y \
+              build-essential \
+              cmake \
+              curl \
+              extra-cmake-modules \
+              clang-format \
+              libkf6config-dev \
+              libkf6i18n-dev \
+              libkf6texteditor-dev \
+              libkf6xmlgui-dev \
+              snapd \
+              qt6-base-dev
+            snap install rustup --classic
+            export PATH="/snap/bin:$PATH"
+            rustup default stable
+            rustup component add rustfmt clippy
+          '
+
+      - name: Run lint checks
+        env:
+          CLANG_FORMAT_FILES: ${{ steps.clang-format-targets.outputs.files }}
+        run: |
+          printf '%s' "$CLANG_FORMAT_FILES" \
+            | sudo lxc exec harmonic-ci -- bash -c 'cat > /root/harmonic/.clang-format-targets'
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            export PATH="/snap/bin:$PATH"
+            cd /root/harmonic
+            cargo fmt --check --manifest-path /root/harmonic/Cargo.toml
+            cargo clippy --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features -- -D warnings
+            style_file="/root/harmonic/.clang-format"
+            fallback_style_file="/root/harmonic/.clang-format.ci"
+            backup_style_file="/root/harmonic/.clang-format.bak"
+            if ! clang-format --style=file --dump-config >/dev/null 2>&1; then
+              sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" "${style_file}" > "${fallback_style_file}"
+              cp "${style_file}" "${backup_style_file}"
+              cp "${fallback_style_file}" "${style_file}"
+              trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
+            fi
+            mapfile -t style_targets < /root/harmonic/.clang-format-targets
+            rm -f /root/harmonic/.clang-format-targets
+            if [ "${#style_targets[@]}" -gt 0 ] && [ -n "${style_targets[0]}" ]; then
+              clang-format --style=file --dry-run --Werror -- "${style_targets[@]}"
+            else
+              echo "No C/C++ files changed; skipping clang-format check."
+            fi
+          '
+
+      - name: Run Rust tests
+        run: |
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            export CI=true
+            export CARGO_TERM_PROGRESS_WHEN=never
+            export PATH="/snap/bin:$PATH"
+            cd /root/harmonic
+            timeout --signal=TERM --kill-after=5m 40m \
+              cargo test --locked --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features
+          '
+
+      - name: Build Kate plugin (includes Rust release build)
+        run: |
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            export CI=true
+            export CARGO_TERM_PROGRESS_WHEN=never
+            export PATH="/snap/bin:$PATH"
+            cd /root/harmonic
+            cmake -S plugin -B plugin/build -DCMAKE_BUILD_TYPE=Release
+            timeout --signal=TERM --kill-after=5m 45m \
+              cmake --build plugin/build -j"$(nproc)"
+          '

@@ -36,8 +36,12 @@ pub unsafe extern "C" fn harmonic_generate(
     let prompt_str = unsafe { CStr::from_ptr(prompt) }.to_str().unwrap_or("");
 
     let config = EngineConfig {
-        backend: unsafe { cstr_to_option(backend) }.unwrap_or("opencode").to_string(),
-        command: unsafe { cstr_to_option(command) }.unwrap_or("opencode").to_string(),
+        backend: unsafe { cstr_to_option(backend) }
+            .unwrap_or("opencode")
+            .to_string(),
+        command: unsafe { cstr_to_option(command) }
+            .unwrap_or("opencode")
+            .to_string(),
         model: unsafe { cstr_to_option(model) }.unwrap_or("").to_string(),
         api_key: unsafe { cstr_to_option(api_key) }.unwrap_or("").to_string(),
         send_context,
