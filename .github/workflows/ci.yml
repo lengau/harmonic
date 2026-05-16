@@ -74,6 +74,7 @@ jobs:
               libkf6i18n-dev \
               libkf6texteditor-dev \
               libkf6xmlgui-dev \
+              qtkeychain-qt6-dev \
               snapd \
               qt6-base-dev
             snap install rustup --classic
