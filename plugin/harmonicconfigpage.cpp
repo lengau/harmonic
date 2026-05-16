@@ -67,10 +67,17 @@ HarmonicConfigPage::HarmonicConfigPage(QWidget *parent)
             &HarmonicConfigPage::onSettingChanged);
     connect(m_modelEdit, &QLineEdit::textChanged, this,
             &HarmonicConfigPage::onSettingChanged);
-    connect(m_apiKeyEdit, &QLineEdit::textChanged, this,
-            &HarmonicConfigPage::onSettingChanged);
     connect(m_contextCheck, &QCheckBox::toggled, this,
             &HarmonicConfigPage::onSettingChanged);
+
+    // Track when user edits the API key field (skip during initialization)
+    connect(m_apiKeyEdit, &QLineEdit::textChanged, this, [this]() {
+        if (!m_isInitializing) {
+            m_apiKeyFieldUserEdited = true;
+            m_apiKeyEdited = true;
+            changed();
+        }
+    });
 
     reset();
 }
@@ -101,23 +108,34 @@ void HarmonicConfigPage::apply() {
 
     // Store the API key in the Secret Service (via QtKeychain) asynchronously.
     // Only delete the legacy entry after the write succeeds.
-    if (m_writeJob) {
-        disconnect(m_writeJob, nullptr, this, nullptr);
-        m_writeJob->deleteLater();
+    // Only write the API key if it was edited by the user OR if the field is empty
+    if (m_apiKeyEdited || m_apiKeyEdit->text().isEmpty()) {
+        if (m_writeJob) {
+            disconnect(m_writeJob, nullptr, this, nullptr);
+            m_writeJob->deleteLater();
+        }
+        // Use nullptr parent so job survives page destruction, and setAutoDelete(true)
+        // so it self-deletes after completion
+        m_writeJob =
+            new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), nullptr);
+        m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
+        m_writeJob->setTextData(m_apiKeyEdit->text());
+        m_writeJob->setAutoDelete(true);
+        connect(m_writeJob, &QKeychain::Job::finished, this,
+                &HarmonicConfigPage::onWritePasswordJobFinished);
+        m_writeJob->start();
+        m_apiKeyEdited = false;
     }
-    m_writeJob =
-        new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
-    m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
-    m_writeJob->setTextData(m_apiKeyEdit->text());
-    m_writeJob->setAutoDelete(false);
-    connect(m_writeJob, &QKeychain::Job::finished, this,
-            &HarmonicConfigPage::onWritePasswordJobFinished);
-    m_writeJob->start();
 }
 
 void HarmonicConfigPage::reset() {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+
+    // Reset tracking flags
+    m_apiKeyLoaded = false;
+    m_apiKeyEdited = false;
+    m_apiKeyFieldUserEdited = false;
 
     QString backend = group.readEntry("Backend", "copilot");
     int idx = m_backendCombo->findData(backend);
@@ -136,10 +154,12 @@ void HarmonicConfigPage::reset() {
         disconnect(m_readJob, nullptr, this, nullptr);
         m_readJob->deleteLater();
     }
+    // Use nullptr parent so job survives page destruction, and setAutoDelete(true)
+    // so it self-deletes after completion
     m_readJob =
-        new QKeychain::ReadPasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
+        new QKeychain::ReadPasswordJob(QLatin1String(KEYCHAIN_SERVICE), nullptr);
     m_readJob->setKey(QLatin1String(KEYCHAIN_KEY));
-    m_readJob->setAutoDelete(false);
+    m_readJob->setAutoDelete(true);
     connect(m_readJob, &QKeychain::Job::finished, this,
             &HarmonicConfigPage::onReadPasswordJobFinished);
     m_readJob->start();
@@ -162,22 +182,31 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
     if (m_readJob->error() == QKeychain::NoError) {
-        m_apiKeyEdit->setText(m_readJob->textData());
+        // Only set the text if user hasn't started typing yet
+        if (!m_apiKeyFieldUserEdited) {
+            m_apiKeyEdit->setText(m_readJob->textData());
+        }
+        m_apiKeyLoaded = true;
     } else {
         // Fall back to any legacy plain-text key in KConfig and migrate it.
         const QString legacyKey = group.readEntry("ApiKey", QString());
-        m_apiKeyEdit->setText(legacyKey);
+        // Only set the text if user hasn't started typing yet
+        if (!m_apiKeyFieldUserEdited) {
+            m_apiKeyEdit->setText(legacyKey);
+        }
         if (!legacyKey.isEmpty()) {
             // Migrate: write to Secret Service, then remove from KConfig.
             if (m_migrateJob) {
                 disconnect(m_migrateJob, nullptr, this, nullptr);
                 m_migrateJob->deleteLater();
             }
+            // Use nullptr parent so job survives page destruction, and setAutoDelete(true)
+            // so it self-deletes after completion
             m_migrateJob = new QKeychain::WritePasswordJob(
-                QLatin1String(KEYCHAIN_SERVICE), this);
+                QLatin1String(KEYCHAIN_SERVICE), nullptr);
             m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
             m_migrateJob->setTextData(legacyKey);
-            m_migrateJob->setAutoDelete(false);
+            m_migrateJob->setAutoDelete(true);
             connect(m_migrateJob, &QKeychain::Job::finished, this,
                     &HarmonicConfigPage::onMigratePasswordJobFinished);
             m_migrateJob->start();
