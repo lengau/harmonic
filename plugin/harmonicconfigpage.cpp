@@ -108,8 +108,9 @@ void HarmonicConfigPage::apply() {
 
     // Store the API key in the Secret Service (via QtKeychain) asynchronously.
     // Only delete the legacy entry after the write succeeds.
-    // Only write the API key if it was edited by the user OR if the field is empty
-    if (m_apiKeyEdited || m_apiKeyEdit->text().isEmpty()) {
+    // Only write if user explicitly edited it, or if it's empty after a successful load
+    // (don't write empty during initialization before the async read completes)
+    if (m_apiKeyEdited || (m_apiKeyLoaded && m_apiKeyEdit->text().isEmpty())) {
         if (m_writeJob) {
             disconnect(m_writeJob, nullptr, this, nullptr);
             m_writeJob->deleteLater();
