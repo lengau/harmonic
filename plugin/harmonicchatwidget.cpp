@@ -590,7 +590,7 @@ void HarmonicChatWidget::onAcpError(const QString &message) {
         appendMessage(QStringLiteral("error"), message);
     }
 
-    if (!m_acp->isRunning()) {
+    if (m_acp->isRunning()) {
         resetAcpState();
     }
 
