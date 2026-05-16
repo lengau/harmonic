@@ -305,16 +305,19 @@ void HarmonicAcp::onProcessError(QProcess::ProcessError error) {
         return;
     }
 
+    QString errorMessage;
     if (error == QProcess::FailedToStart) {
-        const QString errorString = process->errorString();
-        m_process = nullptr;
-        m_sessionId.clear();
-        m_nextId = 1;
-        m_readBuffer.clear();
-        process->deleteLater();
-        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(errorString));
-        return;
+        errorMessage = QStringLiteral("Failed to start ACP server: %1").arg(process->errorString());
+    } else {
+        errorMessage = QStringLiteral("ACP process error: %1").arg(process->errorString());
     }
 
-    Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(process->errorString()));
+    // Defensive reset: ensure process is always cleaned up on error
+    m_process = nullptr;
+    m_sessionId.clear();
+    m_nextId = 1;
+    m_readBuffer.clear();
+    process->deleteLater();
+
+    Q_EMIT errorOccurred(errorMessage);
 }

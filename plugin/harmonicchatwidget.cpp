@@ -590,7 +590,8 @@ void HarmonicChatWidget::onAcpError(const QString &message) {
         appendMessage(QStringLiteral("error"), message);
     }
 
-    if (!m_acpInitialized && m_acp->isRunning()) {
+    // Defensive reset: always stop ACP on any error, regardless of initialization state
+    if (m_acp && m_acp->isRunning()) {
         m_acp->stop();
     }
 
