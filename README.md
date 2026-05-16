@@ -100,6 +100,11 @@ Install paths are controlled by KDE CMake install macros, so exact destinations 
 - The Rust core currently depends on `serde` and `serde_json`.
 - Backend execution is handled by spawning external CLI tools from the Rust engine or the plugin chat UI.
 
+## Linting
+
+- Rust: `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings`
+- C++/Qt: `clang-format --dry-run --Werror` using the repo's `.clang-format`
+
 ## License
 
 Harmonic is licensed under the **MIT License**.

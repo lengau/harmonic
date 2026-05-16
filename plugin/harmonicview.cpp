@@ -11,25 +11,28 @@
 #include <KConfigGroup>
 
 #include <QAction>
-#include <QInputDialog>
-#include <QMessageBox>
+#include <QFileInfo>
 #include <QIcon>
+#include <QInputDialog>
+#include <QMainWindow>
+#include <QMessageBox>
+#include <QStatusBar>
+#include <QtConcurrent/QtConcurrentRun>
 
 HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *mainWindow)
-    : QObject(mainWindow)
-    , KXMLGUIClient()
-    , m_mainWindow(mainWindow)
-    , m_plugin(plugin)
-{
+    : QObject(mainWindow), KXMLGUIClient(), m_mainWindow(mainWindow), m_plugin(plugin) {
     setComponentName(QStringLiteral("harmonicplugin"), i18n("Harmonic"));
     setXMLFile(QStringLiteral("harmonicplugin.rc"));
 
     // Create vibecode action with shortcut
-    auto *action = actionCollection()->addAction(QStringLiteral("harmonic_vibecode"));
-    action->setText(i18n("Harmonic: Vibecode"));
-    action->setToolTip(i18n("Generate code from a natural language prompt"));
-    actionCollection()->setDefaultShortcut(action, QKeySequence(QStringLiteral("Ctrl+Shift+V")));
-    connect(action, &QAction::triggered, this, &HarmonicView::vibecode);
+    m_vibecodeAction = actionCollection()->addAction(QStringLiteral("harmonic_vibecode"));
+    m_vibecodeAction->setText(i18n("Harmonic: Vibecode"));
+    m_vibecodeAction->setToolTip(i18n("Generate code from a natural language prompt"));
+    actionCollection()->setDefaultShortcut(m_vibecodeAction, QKeySequence(QStringLiteral("Ctrl+Shift+V")));
+    connect(m_vibecodeAction, &QAction::triggered, this, &HarmonicView::vibecode);
+
+    m_vibecodeWatcher = new QFutureWatcher<QString>(this);
+    connect(m_vibecodeWatcher, &QFutureWatcher<QString>::finished, this, &HarmonicView::handleVibecodeFinished);
 
     mainWindow->guiFactory()->addClient(this);
 
@@ -39,36 +42,65 @@ HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *main
         QStringLiteral("harmonic_chat"),
         KTextEditor::MainWindow::Right,
         QIcon::fromTheme(QStringLiteral("dialog-messages")),
-        i18n("Harmonic Chat")
-    );
+        i18n("Harmonic Chat"));
 
     m_chatWidget = new HarmonicChatWidget(m_toolView);
 
     // Update context when the active view changes
     connect(mainWindow, &KTextEditor::MainWindow::viewChanged, this, &HarmonicView::updateChatContext);
+    updateChatContext();
 }
 
-HarmonicView::~HarmonicView()
-{
+HarmonicView::~HarmonicView() {
+    if (m_vibecodeWatcher && m_vibecodeWatcher->isRunning()) {
+        // Note: cancel() doesn't interrupt the blocking subprocess.
+        // We disconnect signals so the handler won't fire on a destroyed object,
+        // then wait for the subprocess to complete naturally.
+        disconnect(m_vibecodeWatcher, nullptr, this, nullptr);
+        m_vibecodeWatcher->cancel();
+        m_vibecodeWatcher->waitForFinished();
+    }
+
     m_mainWindow->guiFactory()->removeClient(this);
     delete m_toolView;
 }
 
-void HarmonicView::updateChatContext()
-{
+void HarmonicView::updateChatContext() {
     auto *view = m_mainWindow->activeView();
-    if (view && view->document()) {
-        m_chatWidget->setContext(view->document()->text());
+    if (!view || !view->document()) {
+        m_chatWidget->setContext(QString());
+        m_chatWidget->setWorkingDirectory(QString());
+        return;
+    }
+
+    auto *document = view->document();
+    m_chatWidget->setContext(document->text());
+
+    QString workingDirectory;
+    const QUrl url = document->url();
+    if (url.isLocalFile()) {
+        workingDirectory = QFileInfo(url.toLocalFile()).absolutePath();
+    }
+    m_chatWidget->setWorkingDirectory(workingDirectory);
+}
+
+void HarmonicView::showStatusMessage(const QString &message, int timeoutMs) const {
+    if (auto *window = qobject_cast<QMainWindow *>(m_mainWindow->window())) {
+        window->statusBar()->showMessage(message, timeoutMs);
     }
 }
 
-void HarmonicView::vibecode()
-{
+void HarmonicView::vibecode() {
+    if (m_vibecodeWatcher->isRunning()) {
+        showStatusMessage(i18n("Harmonic: Generation already in progress"), 3000);
+        return;
+    }
+
     auto *view = m_mainWindow->activeView();
     if (!view) {
         QMessageBox::warning(m_mainWindow->window(),
-            i18n("Harmonic"),
-            i18n("Please open a file first."));
+                             i18n("Harmonic"),
+                             i18n("Please open a file first."));
         return;
     }
 
@@ -89,8 +121,8 @@ void HarmonicView::vibecode()
         prompt = doc->line(line).trimmed();
         // Strip common comment prefixes
         for (const auto &prefix : {QStringLiteral("//"), QStringLiteral("#"),
-                                    QStringLiteral("/*"), QStringLiteral("*/"),
-                                    QStringLiteral("*"), QStringLiteral("--")}) {
+                                   QStringLiteral("/*"), QStringLiteral("*/"),
+                                   QStringLiteral("*"), QStringLiteral("--")}) {
             if (prompt.startsWith(prefix)) {
                 prompt = prompt.mid(prefix.length()).trimmed();
             }
@@ -106,58 +138,82 @@ void HarmonicView::vibecode()
             i18n("Describe what you want to generate:"),
             QLineEdit::Normal,
             QString(),
-            &ok
-        );
+            &ok);
         if (!ok || prompt.isEmpty()) {
             return;
         }
     }
 
-    // Gather surrounding code as context
-    const char *context = nullptr;
-    QByteArray contextBytes;
-    QString docText = doc->text();
-    if (!docText.isEmpty()) {
-        contextBytes = docText.toUtf8();
-        context = contextBytes.constData();
-    }
-
-    // Call into the Rust core library with config
+    // Capture document state and config on the UI thread before launching work.
+    const int insertLine = view->cursorPosition().line();
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QStringLiteral("Harmonic"));
+    bool sendContext = group.readEntry("SendContext", true);
+    QString docText = sendContext ? doc->text() : QString();
 
     QByteArray promptBytes = prompt.toUtf8();
+    QByteArray contextBytes = docText.toUtf8();
     QByteArray backendBytes = group.readEntry("Backend", "copilot").toUtf8();
     QByteArray commandBytes = group.readEntry("Command", "copilot").toUtf8();
     QByteArray modelBytes = group.readEntry("Model", "").toUtf8();
     QByteArray apiKeyBytes = group.readEntry("ApiKey", "").toUtf8();
-    bool sendContext = group.readEntry("SendContext", true);
 
-    char *result = harmonic_generate(
-        promptBytes.constData(),
-        context,
-        backendBytes.constData(),
-        commandBytes.constData(),
-        modelBytes.isEmpty() ? nullptr : modelBytes.constData(),
-        apiKeyBytes.isEmpty() ? nullptr : apiKeyBytes.constData(),
-        sendContext
-    );
-    if (result) {
-        QString generated = QString::fromUtf8(result);
-        harmonic_free_string(result);
+    m_pendingDocument = doc;
+    m_pendingInsertLine = insertLine;
+    m_vibecodeAction->setEnabled(false);
+    showStatusMessage(i18n("Harmonic: Generating..."));
 
-        if (generated.startsWith(QStringLiteral("// Error:"))) {
-            QMessageBox::warning(parentWidget,
-                i18n("Harmonic"),
-                generated);
-        } else {
-            // Insert on the line below the current cursor
-            int line = view->cursorPosition().line();
-            KTextEditor::Cursor insertPos(line + 1, 0);
-            if (line + 1 >= doc->lines()) {
-                doc->insertText(KTextEditor::Cursor(line, doc->lineLength(line)), QStringLiteral("\n"));
-            }
-            doc->insertText(insertPos, generated + QStringLiteral("\n"));
+    m_vibecodeWatcher->setFuture(QtConcurrent::run([promptBytes,
+                                                    contextBytes,
+                                                    backendBytes,
+                                                    commandBytes,
+                                                    modelBytes,
+                                                    apiKeyBytes,
+                                                    sendContext]() -> QString {
+        // QByteArrays captured by value — safe because harmonic_generate() is synchronous
+        // and completes before the lambda returns, keeping the buffers alive.
+        const char *context = contextBytes.isEmpty() ? nullptr : contextBytes.constData();
+        char *result = harmonic_generate(
+            promptBytes.constData(),
+            context,
+            backendBytes.constData(),
+            commandBytes.constData(),
+            modelBytes.isEmpty() ? nullptr : modelBytes.constData(),
+            apiKeyBytes.isEmpty() ? nullptr : apiKeyBytes.constData(),
+            sendContext);
+        if (!result) {
+            return QStringLiteral("// Error: Harmonic generation failed.");
         }
+
+        const QString generated = QString::fromUtf8(result);
+        harmonic_free_string(result);
+        return generated;
+    }));
+}
+
+void HarmonicView::handleVibecodeFinished() {
+    m_vibecodeAction->setEnabled(true);
+
+    const QString generated = m_vibecodeWatcher->result();
+    QWidget *parentWidget = m_mainWindow->window();
+
+    if (generated.startsWith(QStringLiteral("// Error:"))) {
+        showStatusMessage(i18n("Harmonic: Generation failed"), 5000);
+        QMessageBox::warning(parentWidget, i18n("Harmonic"), generated);
+    } else if (!m_pendingDocument) {
+        showStatusMessage(i18n("Harmonic: Generation completed, but the document was closed."), 5000);
+    } else {
+        const int currentLine = qMax(0, qMin(m_pendingInsertLine, m_pendingDocument->lines() - 1));
+        const int insertLine = currentLine + 1;
+        if (insertLine >= m_pendingDocument->lines()) {
+            m_pendingDocument->insertText(
+                KTextEditor::Cursor(currentLine, m_pendingDocument->lineLength(currentLine)),
+                QStringLiteral("\n"));
+        }
+        m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generated + QStringLiteral("\n"));
+        showStatusMessage(i18n("Harmonic: Generation complete"), 3000);
     }
+
+    m_pendingDocument.clear();
+    m_pendingInsertLine = -1;
 }
