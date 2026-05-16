@@ -129,16 +129,16 @@ void HarmonicConfigPage::apply() {
     QPointer<HarmonicConfigPage> pageGuard(this);
     connect(m_writeJob, &QKeychain::Job::finished, nullptr,
             [job, config, pageGuard]() {
-      if (job->error() == QKeychain::NoError) {
-        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-        group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-        group.sync();
-      }
-      // Clear the stale pointer only if the page still exists
-      if (pageGuard) {
-        pageGuard->m_writeJob = nullptr;
-      }
-    });
+                if (job->error() == QKeychain::NoError) {
+                    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                    group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+                    group.sync();
+                }
+                // Clear the stale pointer only if the page still exists
+                if (pageGuard) {
+                    pageGuard->m_writeJob = nullptr;
+                }
+            });
     m_writeJob->start();
 }
 
@@ -216,16 +216,16 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             QPointer<HarmonicConfigPage> pageGuard(this);
             connect(m_migrateJob, &QKeychain::Job::finished, nullptr,
                     [job, config, pageGuard]() {
-              if (job->error() == QKeychain::NoError) {
-                KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-                group.sync();
-              }
-              // Clear the stale pointer only if the page still exists
-              if (pageGuard) {
-                pageGuard->m_migrateJob = nullptr;
-              }
-            });
+                        if (job->error() == QKeychain::NoError) {
+                            KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                            group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+                            group.sync();
+                        }
+                        // Clear the stale pointer only if the page still exists
+                        if (pageGuard) {
+                            pageGuard->m_migrateJob = nullptr;
+                        }
+                    });
             m_migrateJob->start();
         }
     }
