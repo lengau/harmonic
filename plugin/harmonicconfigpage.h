@@ -31,7 +31,6 @@ public Q_SLOTS:
 private Q_SLOTS:
   void onReadPasswordJobFinished();
   void onWritePasswordJobFinished();
-  void onMigratePasswordJobFinished();
   void onSettingChanged();
 
 private:

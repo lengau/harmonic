@@ -12,6 +12,7 @@
 #include <QGroupBox>
 #include <QIcon>
 #include <QLineEdit>
+#include <QPointer>
 #include <QVBoxLayout>
 
 static const char *CONFIG_GROUP = "Harmonic";
@@ -106,8 +107,8 @@ void HarmonicConfigPage::apply() {
 
   // Store the API key in the Secret Service (via QtKeychain) asynchronously.
   // Job is created with nullptr parent so it persists even if this config page
-  // is destroyed before the write completes. Only delete the legacy entry after
-  // the write succeeds.
+  // is destroyed before the write completes. Use QPointer to safely guard the
+  // page object; if destroyed before job completes, the signal will be ignored.
   if (m_writeJob) {
     disconnect(m_writeJob, nullptr, this, nullptr);
     m_writeJob->deleteLater();
@@ -117,8 +118,22 @@ void HarmonicConfigPage::apply() {
   m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
   m_writeJob->setTextData(m_apiKeyEdit->text());
   m_writeJob->setAutoDelete(true);
+
+  // Use QPointer to safely guard page lifetime; callback only executes if page
+  // still exists when job finishes
+  QPointer<HarmonicConfigPage> pageGuard(this);
+  QKeychain::WritePasswordJob *job = m_writeJob;
   connect(m_writeJob, &QKeychain::Job::finished, this,
-          &HarmonicConfigPage::onWritePasswordJobFinished);
+          [pageGuard, job, config]() {
+            if (!pageGuard) {
+              return; // Page was destroyed, skip callback
+            }
+            if (job->error() == QKeychain::NoError) {
+              KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+              group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+              group.sync();
+            }
+          });
   m_writeJob->start();
 }
 
@@ -177,7 +192,7 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
     if (!legacyKey.isEmpty()) {
       // Migrate: write to Secret Service, then remove from KConfig.
       // Job is created with nullptr parent so it persists even if this config page
-      // is destroyed before the migration completes.
+      // is destroyed before the migration completes. Use QPointer to guard page.
       if (m_migrateJob) {
         disconnect(m_migrateJob, nullptr, this, nullptr);
         m_migrateJob->deleteLater();
@@ -187,8 +202,23 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
       m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
       m_migrateJob->setTextData(legacyKey);
       m_migrateJob->setAutoDelete(true);
+
+      // Use QPointer to safely guard page lifetime; callback only executes if
+      // page still exists when job finishes
+      QPointer<HarmonicConfigPage> pageGuard(this);
+      QKeychain::WritePasswordJob *job = m_migrateJob;
       connect(m_migrateJob, &QKeychain::Job::finished, this,
-              &HarmonicConfigPage::onMigratePasswordJobFinished);
+              [pageGuard, job, config]() {
+                if (!pageGuard) {
+                  return; // Page was destroyed, skip callback
+                }
+                if (job->error() == QKeychain::NoError) {
+                  KConfigGroup group =
+                      config->group(QLatin1String(CONFIG_GROUP));
+                  group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+                  group.sync();
+                }
+              });
       m_migrateJob->start();
     }
   }
@@ -203,35 +233,7 @@ void HarmonicConfigPage::onWritePasswordJobFinished() {
     return;
   }
 
-  QKeychain::WritePasswordJob *job = m_writeJob;
   m_writeJob = nullptr;
-
-  // Only delete legacy key if write succeeded
-  if (job->error() == QKeychain::NoError) {
-    KSharedConfig::Ptr config = KSharedConfig::openConfig();
-    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-    group.deleteEntry("ApiKey");
-    group.sync();
-  }
-
-  // Job auto-deletes itself since setAutoDelete(true)
-}
-
-void HarmonicConfigPage::onMigratePasswordJobFinished() {
-  if (!m_migrateJob) {
-    return;
-  }
-
-  QKeychain::WritePasswordJob *job = m_migrateJob;
-  m_migrateJob = nullptr;
-
-  // Only delete legacy key if migration write succeeded
-  if (job->error() == QKeychain::NoError) {
-    KSharedConfig::Ptr config = KSharedConfig::openConfig();
-    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-    group.deleteEntry("ApiKey");
-    group.sync();
-  }
 
   // Job auto-deletes itself since setAutoDelete(true)
 }
