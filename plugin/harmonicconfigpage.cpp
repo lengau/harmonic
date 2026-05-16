@@ -108,6 +108,19 @@ void HarmonicConfigPage::apply() {
         m_migrateJob = nullptr;
     }
 
+    // Only write the API key if it was successfully loaded from keychain.
+    // If the async read hasn't completed yet, don't write an empty value over
+    // the existing key.
+    if (!m_apiKeyLoaded) {
+        // If key wasn't loaded, don't write (preserve existing)
+        if (m_writeJob) {
+            disconnect(m_writeJob, nullptr, this, nullptr);
+            m_writeJob->deleteLater();
+            m_writeJob = nullptr;
+        }
+        return;
+    }
+
     // Store the API key in the Secret Service (via QtKeychain) asynchronously.
     // Job is created with nullptr parent so it persists even if this config page
     // is destroyed before the write completes. Use QPointer to safely guard the
@@ -129,15 +142,15 @@ void HarmonicConfigPage::apply() {
     QPointer<HarmonicConfigPage> pageGuard(this);
     connect(m_writeJob, &QKeychain::Job::finished, nullptr,
             [job, config, pageGuard]() {
-                if (job->error() == QKeychain::NoError) {
-                    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                    group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-                    group.sync();
-                }
-                // Clear the stale pointer only if the page still exists
-                if (pageGuard) {
-                    pageGuard->m_writeJob = nullptr;
-                }
+              if (job->error() == QKeychain::NoError) {
+                KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+                group.sync();
+              }
+              // Clear the stale pointer only if this job is still the current one
+              if (pageGuard && pageGuard->m_writeJob == job) {
+                pageGuard->m_writeJob = nullptr;
+              }
             });
     m_writeJob->start();
 }
@@ -157,6 +170,7 @@ void HarmonicConfigPage::reset() {
     m_contextCheck->setChecked(group.readEntry("SendContext", true));
 
     m_isInitializing = true;
+    m_apiKeyLoaded = false;  // Mark key as not yet loaded
 
     // Read API key from Secret Service (via QtKeychain) asynchronously.
     if (m_readJob) {
@@ -190,10 +204,12 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
 
     if (m_readJob->error() == QKeychain::NoError) {
         m_apiKeyEdit->setText(m_readJob->textData());
+        m_apiKeyLoaded = true;
     } else {
         // Fall back to any legacy plain-text key in KConfig and migrate it.
         const QString legacyKey = group.readEntry("ApiKey", QString());
         m_apiKeyEdit->setText(legacyKey);
+        m_apiKeyLoaded = true;  // Loaded from fallback, safe to write
         if (!legacyKey.isEmpty()) {
             // Migrate: write to Secret Service, then remove from KConfig.
             // Job is created with nullptr parent so it persists even if this config
@@ -216,15 +232,15 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             QPointer<HarmonicConfigPage> pageGuard(this);
             connect(m_migrateJob, &QKeychain::Job::finished, nullptr,
                     [job, config, pageGuard]() {
-                        if (job->error() == QKeychain::NoError) {
-                            KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                            group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-                            group.sync();
-                        }
-                        // Clear the stale pointer only if the page still exists
-                        if (pageGuard) {
-                            pageGuard->m_migrateJob = nullptr;
-                        }
+                      if (job->error() == QKeychain::NoError) {
+                        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+                        group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+                        group.sync();
+                      }
+                      // Clear the stale pointer only if this job is still the current one
+                      if (pageGuard && pageGuard->m_migrateJob == job) {
+                        pageGuard->m_migrateJob = nullptr;
+                      }
                     });
             m_migrateJob->start();
         }

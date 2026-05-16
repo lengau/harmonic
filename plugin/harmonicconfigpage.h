@@ -44,6 +44,7 @@ class HarmonicConfigPage : public KTextEditor::ConfigPage {
     QKeychain::WritePasswordJob *m_writeJob = nullptr;
     QKeychain::WritePasswordJob *m_migrateJob = nullptr;
     bool m_isInitializing = false;
+    bool m_apiKeyLoaded = false;
 };
 
 #endif // HARMONICCONFIGPAGE_H
