@@ -124,16 +124,24 @@ void HarmonicConfigPage::apply() {
         m_writeJob->setAutoDelete(true);
 
         // Connect cleanup to the job itself, not to this page, so it runs even if
-        // the page is destroyed before the job finishes
+        // the page is destroyed before the job finishes. Capture page as QPointer
+        // so it auto-nullifies if page is destroyed.
         QKeychain::WritePasswordJob *writeJob = m_writeJob;
-        connect(writeJob, &QKeychain::Job::finished, writeJob, [writeJob]() {
-            if (writeJob->error() == QKeychain::NoError) {
-                KSharedConfig::Ptr config = KSharedConfig::openConfig();
-                KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                group.deleteEntry("ApiKey");
-                group.sync();
-            }
-        });
+        HarmonicConfigPage *pagePtr = this;
+        connect(writeJob, &QKeychain::Job::finished, writeJob,
+                [writeJob, pagePtr]() {
+                    if (writeJob->error() == QKeychain::NoError) {
+                        KSharedConfig::Ptr config = KSharedConfig::openConfig();
+                        KConfigGroup group =
+                            config->group(QLatin1String(CONFIG_GROUP));
+                        group.deleteEntry("ApiKey");
+                        group.sync();
+                    }
+                    // Clear the member pointer if page still exists
+                    if (pagePtr && pagePtr->m_writeJob == writeJob) {
+                        pagePtr->m_writeJob = nullptr;
+                    }
+                });
         m_writeJob->start();
         m_apiKeyEdited = false;
     }
@@ -220,16 +228,24 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
             m_migrateJob->setAutoDelete(true);
 
             // Connect cleanup to the job itself, not to this page, so it runs even if
-            // the page is destroyed before the job finishes
+            // the page is destroyed before the job finishes. Capture page so we can
+            // safely clear the member pointer.
             QKeychain::WritePasswordJob *migrateJob = m_migrateJob;
-            connect(migrateJob, &QKeychain::Job::finished, migrateJob, [migrateJob]() {
-                if (migrateJob->error() == QKeychain::NoError) {
-                    KSharedConfig::Ptr config = KSharedConfig::openConfig();
-                    KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                    group.deleteEntry("ApiKey");
-                    group.sync();
-                }
-            });
+            HarmonicConfigPage *pagePtr = this;
+            connect(migrateJob, &QKeychain::Job::finished, migrateJob,
+                    [migrateJob, pagePtr]() {
+                        if (migrateJob->error() == QKeychain::NoError) {
+                            KSharedConfig::Ptr config = KSharedConfig::openConfig();
+                            KConfigGroup group =
+                                config->group(QLatin1String(CONFIG_GROUP));
+                            group.deleteEntry("ApiKey");
+                            group.sync();
+                        }
+                        // Clear the member pointer if page still exists
+                        if (pagePtr && pagePtr->m_migrateJob == migrateJob) {
+                            pagePtr->m_migrateJob = nullptr;
+                        }
+                    });
             m_migrateJob->start();
         }
     }
