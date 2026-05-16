@@ -119,15 +119,12 @@ void HarmonicConfigPage::apply() {
   m_writeJob->setTextData(m_apiKeyEdit->text());
   m_writeJob->setAutoDelete(true);
 
-  // Use QPointer to safely guard page lifetime; callback only executes if page
-  // still exists when job finishes
-  QPointer<HarmonicConfigPage> pageGuard(this);
+  // Use nullptr context so lambda executes even if page is destroyed. This
+  // ensures the legacy plaintext key is deleted from KConfig regardless of
+  // widget lifetime.
   QKeychain::WritePasswordJob *job = m_writeJob;
-  connect(m_writeJob, &QKeychain::Job::finished, this,
-          [pageGuard, job, config]() {
-            if (!pageGuard) {
-              return; // Page was destroyed, skip callback
-            }
+  connect(m_writeJob, &QKeychain::Job::finished, nullptr,
+          [job, config]() {
             if (job->error() == QKeychain::NoError) {
               KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
               group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
@@ -203,15 +200,12 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
       m_migrateJob->setTextData(legacyKey);
       m_migrateJob->setAutoDelete(true);
 
-      // Use QPointer to safely guard page lifetime; callback only executes if
-      // page still exists when job finishes
-      QPointer<HarmonicConfigPage> pageGuard(this);
+      // Use nullptr context so lambda executes even if page is destroyed. This
+      // ensures the legacy plaintext key is deleted from KConfig regardless of
+      // widget lifetime.
       QKeychain::WritePasswordJob *job = m_migrateJob;
-      connect(m_migrateJob, &QKeychain::Job::finished, this,
-              [pageGuard, job, config]() {
-                if (!pageGuard) {
-                  return; // Page was destroyed, skip callback
-                }
+      connect(m_migrateJob, &QKeychain::Job::finished, nullptr,
+              [job, config]() {
                 if (job->error() == QKeychain::NoError) {
                   KConfigGroup group =
                       config->group(QLatin1String(CONFIG_GROUP));

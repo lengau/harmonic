@@ -190,16 +190,12 @@ void HarmonicView::onVibecodeApiKeyJobFinished() {
       migrateJob->setKey(QStringLiteral("ApiKey"));
       migrateJob->setTextData(m_vibecodeApiKey);
       migrateJob->setAutoDelete(true);
-      // Plaintext cleanup is done in a lambda with QPointer guards that don't
-      // depend on view lifetime. This ensures cleanup happens regardless of
-      // whether HarmonicView is destroyed before the job completes.
-      QPointer<HarmonicView> viewGuard(this);
-      connect(migrateJob, &QKeychain::Job::finished, this,
-              [viewGuard, migrateJob, config]() {
-                if (migrateJob->error() == QKeychain::NoError) {
-                  // Delete the legacy plaintext entry after successful
-                  // migration. This uses config directly, not dependent on view
-                  // object state.
+      // Use nullptr context so lambda executes even if view is destroyed. This
+      // ensures plaintext cleanup happens regardless of widget lifetime.
+      auto* migrateJobPtr = migrateJob;
+      connect(migrateJob, &QKeychain::Job::finished, nullptr,
+              [migrateJobPtr, config]() {
+                if (migrateJobPtr->error() == QKeychain::NoError) {
                   auto cfg = config->group(QStringLiteral("Harmonic"));
                   cfg.deleteEntry("ApiKey");
                   config->sync();
