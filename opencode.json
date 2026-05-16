@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "myprovider": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "qwenvl-local",
+      "options": {
+        "baseURL": "http://localhost:8326/v1"
+      },
+      "models": {
+        "qwen-vl": {
+          "name": "Qwen-VL Local"
+        }
+      }
+    }
+  }
+}

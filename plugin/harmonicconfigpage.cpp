@@ -158,6 +158,7 @@ void HarmonicConfigPage::apply() {
 void HarmonicConfigPage::reset() {
     m_isInitializing = true;
     m_apiKeyEdited = false;
+    m_apiKeyFieldUserEdited = false;
 
     // Block signals during programmatic updates so they don't mark the page dirty
     blockSignals(true);
@@ -213,12 +214,18 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
     QPointer<HarmonicConfigPage> pageGuard(this);
 
     if (job->error() == QKeychain::NoError) {
-        m_apiKeyEdit->setText(job->textData());
+        // Only apply the loaded key if the user hasn't edited the field
+        if (!m_apiKeyFieldUserEdited) {
+            m_apiKeyEdit->setText(job->textData());
+        }
         m_apiKeyLoaded = true;
     } else {
         // Fall back to any legacy plain-text key in KConfig and migrate it.
         const QString legacyKey = group.readEntry("ApiKey", QString());
-        m_apiKeyEdit->setText(legacyKey);
+        // Only set if user hasn't edited the field
+        if (!m_apiKeyFieldUserEdited) {
+            m_apiKeyEdit->setText(legacyKey);
+        }
         // Only mark as loaded if we found an actual key (either from keychain or
         // legacy). This prevents apply() from writing an empty string and silently
         // wiping an existing key if keychain read fails.
@@ -283,9 +290,11 @@ void HarmonicConfigPage::onSettingChanged() {
     // Track if the API key field was actually edited by the user
     if (sender() == m_apiKeyEdit) {
         m_apiKeyEdited = true;
-    }
-
-    if (!m_isInitializing) {
+        m_apiKeyFieldUserEdited = true;
+        // Always emit changed() for API key edits, even during initialization.
+        // This ensures user input is not lost during async keychain read.
+        changed();
+    } else if (!m_isInitializing) {
         changed();
     }
 }

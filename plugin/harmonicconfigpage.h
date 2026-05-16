@@ -46,6 +46,7 @@ class HarmonicConfigPage : public KTextEditor::ConfigPage {
     bool m_isInitializing = false;
     bool m_apiKeyLoaded = false;
     bool m_apiKeyEdited = false;
+    bool m_apiKeyFieldUserEdited = false;
 };
 
 #endif // HARMONICCONFIGPAGE_H
