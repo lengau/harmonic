@@ -36,6 +36,7 @@ add_library(harmonicplugin MODULE
     harmonicview.cpp
     harmonicconfigpage.cpp
     harmonicchatwidget.cpp
+    harmonicacp.cpp
     harmonicmarkdown.cpp
 )
 
