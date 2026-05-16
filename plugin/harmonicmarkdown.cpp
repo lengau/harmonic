@@ -5,8 +5,7 @@
 
 namespace {
 
-QString applyInlineStyles(QString text)
-{
+QString applyInlineStyles(QString text) {
     text = text.toHtmlEscaped();
     text.replace(QRegularExpression(QStringLiteral(R"(\*\*(.+?)\*\*)")), QStringLiteral("<b>\\1</b>"));
     text.replace(QRegularExpression(QStringLiteral(R"(__(.+?)__)")), QStringLiteral("<b>\\1</b>"));
@@ -15,8 +14,7 @@ QString applyInlineStyles(QString text)
     return text;
 }
 
-QString applyInlineMarkdown(const QString &text)
-{
+QString applyInlineMarkdown(const QString &text) {
     static const QRegularExpression inlineCodePattern(QStringLiteral(R"(`([^`]+)`)"));
 
     QString html;
@@ -34,21 +32,18 @@ QString applyInlineMarkdown(const QString &text)
     return html;
 }
 
-QString renderParagraph(const QString &text)
-{
+QString renderParagraph(const QString &text) {
     return QStringLiteral("<p>%1</p>").arg(applyInlineMarkdown(text));
 }
 
-QString renderCodeBlock(const QString &text)
-{
+QString renderCodeBlock(const QString &text) {
     return QStringLiteral("<pre style=\"background-color: #1e1e1e; color: #d4d4d4; padding: 8px; border-radius: 4px;\">%1</pre>")
         .arg(text.toHtmlEscaped());
 }
 
-}
+} // namespace
 
-QString harmonicMarkdownToHtml(const QString &markdown)
-{
+QString harmonicMarkdownToHtml(const QString &markdown) {
     QString normalized = markdown;
     normalized.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     normalized.replace(QLatin1Char('\r'), QLatin1Char('\n'));
