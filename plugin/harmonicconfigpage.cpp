@@ -105,16 +105,18 @@ void HarmonicConfigPage::apply() {
   }
 
   // Store the API key in the Secret Service (via QtKeychain) asynchronously.
-  // Only delete the legacy entry after the write succeeds.
+  // Job is created with nullptr parent so it persists even if this config page
+  // is destroyed before the write completes. Only delete the legacy entry after
+  // the write succeeds.
   if (m_writeJob) {
     disconnect(m_writeJob, nullptr, this, nullptr);
     m_writeJob->deleteLater();
   }
   m_writeJob =
-      new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), this);
+      new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), nullptr);
   m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
   m_writeJob->setTextData(m_apiKeyEdit->text());
-  m_writeJob->setAutoDelete(false);
+  m_writeJob->setAutoDelete(true);
   connect(m_writeJob, &QKeychain::Job::finished, this,
           &HarmonicConfigPage::onWritePasswordJobFinished);
   m_writeJob->start();
@@ -174,15 +176,17 @@ void HarmonicConfigPage::onReadPasswordJobFinished() {
     m_apiKeyEdit->setText(legacyKey);
     if (!legacyKey.isEmpty()) {
       // Migrate: write to Secret Service, then remove from KConfig.
+      // Job is created with nullptr parent so it persists even if this config page
+      // is destroyed before the migration completes.
       if (m_migrateJob) {
         disconnect(m_migrateJob, nullptr, this, nullptr);
         m_migrateJob->deleteLater();
       }
       m_migrateJob = new QKeychain::WritePasswordJob(
-          QLatin1String(KEYCHAIN_SERVICE), this);
+          QLatin1String(KEYCHAIN_SERVICE), nullptr);
       m_migrateJob->setKey(QLatin1String(KEYCHAIN_KEY));
       m_migrateJob->setTextData(legacyKey);
-      m_migrateJob->setAutoDelete(false);
+      m_migrateJob->setAutoDelete(true);
       connect(m_migrateJob, &QKeychain::Job::finished, this,
               &HarmonicConfigPage::onMigratePasswordJobFinished);
       m_migrateJob->start();
@@ -199,16 +203,18 @@ void HarmonicConfigPage::onWritePasswordJobFinished() {
     return;
   }
 
+  QKeychain::WritePasswordJob *job = m_writeJob;
+  m_writeJob = nullptr;
+
   // Only delete legacy key if write succeeded
-  if (m_writeJob->error() == QKeychain::NoError) {
+  if (job->error() == QKeychain::NoError) {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
     group.deleteEntry("ApiKey");
     group.sync();
   }
 
-  m_writeJob->deleteLater();
-  m_writeJob = nullptr;
+  // Job auto-deletes itself since setAutoDelete(true)
 }
 
 void HarmonicConfigPage::onMigratePasswordJobFinished() {
@@ -216,16 +222,18 @@ void HarmonicConfigPage::onMigratePasswordJobFinished() {
     return;
   }
 
+  QKeychain::WritePasswordJob *job = m_migrateJob;
+  m_migrateJob = nullptr;
+
   // Only delete legacy key if migration write succeeded
-  if (m_migrateJob->error() == QKeychain::NoError) {
+  if (job->error() == QKeychain::NoError) {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
     group.deleteEntry("ApiKey");
     group.sync();
   }
 
-  m_migrateJob->deleteLater();
-  m_migrateJob = nullptr;
+  // Job auto-deletes itself since setAutoDelete(true)
 }
 
 void HarmonicConfigPage::onSettingChanged() {
