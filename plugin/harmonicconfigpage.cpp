@@ -68,7 +68,7 @@ HarmonicConfigPage::HarmonicConfigPage(QWidget *parent)
             &HarmonicConfigPage::onSettingChanged);
     connect(m_modelEdit, &QLineEdit::textChanged, this,
             &HarmonicConfigPage::onSettingChanged);
-    connect(m_apiKeyEdit, &QLineEdit::textChanged, this,
+    connect(m_apiKeyEdit, &QLineEdit::textEdited, this,
             &HarmonicConfigPage::onSettingChanged);
     connect(m_contextCheck, &QCheckBox::toggled, this,
             &HarmonicConfigPage::onSettingChanged);
