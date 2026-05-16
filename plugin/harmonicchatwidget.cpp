@@ -211,6 +211,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     , m_isStreaming(false)
     , m_waitingForFirstChunk(false)
     , m_cancelRequested(false)
+    , m_clearSessionPending(false)
     , m_backendErrorReported(false)
 {
     auto *layout = new QVBoxLayout(this);
@@ -308,7 +309,7 @@ void HarmonicChatWidget::setContext(const QString &context)
 
 void HarmonicChatWidget::handlePrimaryAction()
 {
-    if (m_isStreaming) {
+    if (hasActiveGeneration()) {
         cancelCurrentGeneration();
         return;
     }
@@ -318,18 +319,14 @@ void HarmonicChatWidget::handlePrimaryAction()
 
 void HarmonicChatWidget::clearSession()
 {
-    m_cancelRequested = true;
-    cancelCurrentGeneration();
     m_pendingMessage.clear();
-    m_isStreaming = false;
-    m_streamBuffer.clear();
-    m_stderrLineBuffer.clear();
-    m_stderrOutput.clear();
-    hideTypingIndicator();
-    hidePermissionPrompt();
-    updatePrimaryButton();
-    m_conversation.clear();
-    refreshChatLog();
+    if (hasActiveGeneration()) {
+        m_clearSessionPending = true;
+        cancelCurrentGeneration();
+        return;
+    }
+
+    resetSessionState();
 }
 
 QString HarmonicChatWidget::buildConversationPrompt(const QString &message)
@@ -419,11 +416,20 @@ void HarmonicChatWidget::cancelCurrentGeneration()
         return;
     }
 
+    if (!hasActiveGeneration()) {
+        return;
+    }
+
     m_cancelRequested = true;
     hideTypingIndicator();
     hidePermissionPrompt();
+    updatePrimaryButton();
 
     if (!m_process || m_process->state() == QProcess::NotRunning) {
+        finishStreaming();
+        if (m_clearSessionPending) {
+            resetSessionState();
+        }
         return;
     }
 
@@ -434,6 +440,7 @@ void HarmonicChatWidget::startStreaming()
 {
     m_isStreaming = true;
     m_cancelRequested = false;
+    m_clearSessionPending = false;
     m_backendErrorReported = false;
     m_streamBuffer.clear();
     m_stderrLineBuffer.clear();
@@ -543,6 +550,12 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
         m_process = nullptr;
     }
 
+    if (m_clearSessionPending) {
+        m_clearSessionPending = false;
+        resetSessionState();
+        return;
+    }
+
     if (!m_pendingMessage.isEmpty()) {
         const QString queued = m_pendingMessage;
         m_pendingMessage.clear();
@@ -569,6 +582,11 @@ void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
         m_input->setFocus();
         m_process->deleteLater();
         m_process = nullptr;
+
+        if (m_clearSessionPending) {
+            m_clearSessionPending = false;
+            resetSessionState();
+        }
         return;
     }
 
@@ -626,6 +644,27 @@ void HarmonicChatWidget::appendMessage(const QString &role,
     refreshChatLog();
 }
 
+bool HarmonicChatWidget::hasActiveGeneration() const
+{
+    return m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning);
+}
+
+void HarmonicChatWidget::resetSessionState()
+{
+    m_cancelRequested = false;
+    m_isStreaming = false;
+    m_clearSessionPending = false;
+    m_pendingMessage.clear();
+    m_streamBuffer.clear();
+    m_stderrLineBuffer.clear();
+    m_stderrOutput.clear();
+    hideTypingIndicator();
+    hidePermissionPrompt();
+    updatePrimaryButton();
+    m_conversation.clear();
+    refreshChatLog();
+}
+
 void HarmonicChatWidget::refreshChatLog()
 {
     QString html;
@@ -652,7 +691,7 @@ void HarmonicChatWidget::scrollChatToBottom()
 
 void HarmonicChatWidget::updatePrimaryButton()
 {
-    m_sendButton->setText(m_isStreaming ? i18n("Stop") : i18n("Send"));
+    m_sendButton->setText(hasActiveGeneration() ? i18n("Stop") : i18n("Send"));
 }
 
 void HarmonicChatWidget::showTypingIndicator()

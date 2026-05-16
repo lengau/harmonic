@@ -34,6 +34,8 @@ private Q_SLOTS:
     void denyPermission();
 
 private:
+    bool hasActiveGeneration() const;
+    void resetSessionState();
     void appendMessage(const QString &role,
                        const QString &text,
                        const QString &renderedHtml = QString());
@@ -71,6 +73,7 @@ private:
     bool m_isStreaming;
     bool m_waitingForFirstChunk;
     bool m_cancelRequested;
+    bool m_clearSessionPending;
     bool m_backendErrorReported;
     bool m_isDestroying = false;
 
