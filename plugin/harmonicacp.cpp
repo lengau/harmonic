@@ -46,19 +46,30 @@ void HarmonicAcp::stop()
         return;
     }
 
-    if (m_process->state() == QProcess::NotRunning) {
-        m_process->deleteLater();
-        m_process = nullptr;
+    QProcess *process = m_process;
+    m_process = nullptr;
+
+    if (process->state() == QProcess::NotRunning) {
+        process->deleteLater();
+        Q_EMIT processFinished();
         return;
     }
 
-    m_process->closeWriteChannel();
-    QPointer<QProcess> process = m_process;
-    QTimer::singleShot(2000, process, [process]() {
-        if (!process || process->state() == QProcess::NotRunning) {
+    connect(process, &QProcess::finished, process, &QObject::deleteLater);
+    connect(process, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+        if (m_process) {
             return;
         }
-        process->kill();
+        Q_EMIT processFinished();
+    });
+
+    process->closeWriteChannel();
+    QPointer<QProcess> processGuard = process;
+    QTimer::singleShot(2000, process, [processGuard]() {
+        if (!processGuard || processGuard->state() == QProcess::NotRunning) {
+            return;
+        }
+        processGuard->kill();
     });
 }
 
