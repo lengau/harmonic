@@ -73,6 +73,7 @@ HarmonicConfigPage::HarmonicConfigPage(QWidget *parent)
     connect(m_contextCheck, &QCheckBox::toggled, this,
             &HarmonicConfigPage::onSettingChanged);
 
+    m_isInitializing = true;
     reset();
 }
 
@@ -108,11 +109,11 @@ void HarmonicConfigPage::apply() {
         m_migrateJob = nullptr;
     }
 
-    // Only write the API key if it was successfully loaded from keychain.
-    // If the async read hasn't completed yet, don't write an empty value over
-    // the existing key.
-    if (!m_apiKeyLoaded) {
-        // If key wasn't loaded, don't write (preserve existing)
+    // Write the API key if:
+    // 1. User edited the field (detected via m_apiKeyEdited flag)
+    // 2. OR key was successfully loaded from keychain (m_apiKeyLoaded is true)
+    // If neither is true (fresh install + user didn't touch field), skip write
+    if (!m_apiKeyEdited && !m_apiKeyLoaded) {
         if (m_writeJob) {
             disconnect(m_writeJob, nullptr, this, nullptr);
             m_writeJob->deleteLater();
@@ -121,51 +122,46 @@ void HarmonicConfigPage::apply() {
         return;
     }
 
-    // Store the API key in the Secret Service (via QtKeychain) asynchronously.
-    // Only write if the key is not empty to avoid silently wiping existing keys.
     const QString apiKey = m_apiKeyEdit->text();
-    if (!apiKey.isEmpty()) {
-        // Job is created with nullptr parent so it persists even if this config
-        // page is destroyed before the write completes. Use QPointer to safely
-        // guard the page object; if destroyed before job completes, the signal will
-        // be ignored.
-        if (m_writeJob) {
-            disconnect(m_writeJob, nullptr, this, nullptr);
-            m_writeJob->deleteLater();
-        }
-        m_writeJob = new QKeychain::WritePasswordJob(
-            QLatin1String(KEYCHAIN_SERVICE), nullptr);
-        m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
-        m_writeJob->setTextData(apiKey);
-        m_writeJob->setAutoDelete(true);
 
-        // Use nullptr context so lambda executes even if page is destroyed. This
-        // ensures the legacy plaintext key is deleted from KConfig regardless of
-        // widget lifetime.
-        QKeychain::WritePasswordJob *job = m_writeJob;
-        QPointer<HarmonicConfigPage> pageGuard(this);
-        connect(m_writeJob, &QKeychain::Job::finished, nullptr,
-                [job, config, pageGuard]() {
-                    if (job->error() == QKeychain::NoError) {
-                        KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
-                        group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
-                        group.sync();
-                    }
-                    // Clear the stale pointer only if this job is still the current
-                    // one
-                    if (pageGuard && pageGuard->m_writeJob == job) {
-                        pageGuard->m_writeJob = nullptr;
-                    }
-                });
-        m_writeJob->start();
-    } else if (m_writeJob) {
+    // Write to keychain (supports both setting new key and clearing)
+    if (m_writeJob) {
         disconnect(m_writeJob, nullptr, this, nullptr);
         m_writeJob->deleteLater();
-        m_writeJob = nullptr;
     }
+    m_writeJob =
+        new QKeychain::WritePasswordJob(QLatin1String(KEYCHAIN_SERVICE), nullptr);
+    m_writeJob->setKey(QLatin1String(KEYCHAIN_KEY));
+    if (!apiKey.isEmpty()) {
+        m_writeJob->setTextData(apiKey);
+    }
+    m_writeJob->setAutoDelete(true);
+
+    // Use nullptr context so lambda executes even if page is destroyed. This
+    // ensures the key is properly stored/cleared regardless of widget lifetime.
+    QKeychain::WritePasswordJob *job = m_writeJob;
+    QPointer<HarmonicConfigPage> pageGuard(this);
+    connect(m_writeJob, &QKeychain::Job::finished, nullptr, [job, config, pageGuard]() {
+        if (job->error() == QKeychain::NoError) {
+            KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
+            group.deleteEntry(QLatin1String(KEYCHAIN_KEY));
+            group.sync();
+        }
+        // Clear the stale pointer only if this job is still the current one
+        if (pageGuard && pageGuard->m_writeJob == job) {
+            pageGuard->m_writeJob = nullptr;
+        }
+    });
+    m_writeJob->start();
 }
 
 void HarmonicConfigPage::reset() {
+    m_isInitializing = true;
+    m_apiKeyEdited = false;
+
+    // Block signals during programmatic updates so they don't mark the page dirty
+    blockSignals(true);
+
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
@@ -179,7 +175,8 @@ void HarmonicConfigPage::reset() {
     m_modelEdit->setText(group.readEntry("Model", ""));
     m_contextCheck->setChecked(group.readEntry("SendContext", true));
 
-    m_isInitializing = true;
+    blockSignals(false);
+
     m_apiKeyLoaded = false; // Mark key as not yet loaded
 
     // Read API key from Secret Service (via QtKeychain) asynchronously.
@@ -283,6 +280,11 @@ void HarmonicConfigPage::onWritePasswordJobFinished() {
 }
 
 void HarmonicConfigPage::onSettingChanged() {
+    // Track if the API key field was actually edited by the user
+    if (sender() == m_apiKeyEdit) {
+        m_apiKeyEdited = true;
+    }
+
     if (!m_isInitializing) {
         changed();
     }
