@@ -74,6 +74,7 @@ private:
     bool m_waitingForFirstChunk;
     bool m_cancelRequested;
     bool m_clearSessionPending;
+    bool m_dropInFlightResponse;
     bool m_backendErrorReported;
     bool m_isDestroying = false;
 

@@ -3,6 +3,27 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 
+namespace {
+QString processErrorName(QProcess::ProcessError error)
+{
+    switch (error) {
+    case QProcess::FailedToStart:
+        return QStringLiteral("failed to start");
+    case QProcess::Crashed:
+        return QStringLiteral("crashed");
+    case QProcess::Timedout:
+        return QStringLiteral("timed out");
+    case QProcess::WriteError:
+        return QStringLiteral("write error");
+    case QProcess::ReadError:
+        return QStringLiteral("read error");
+    case QProcess::UnknownError:
+    default:
+        return QStringLiteral("unknown error");
+    }
+}
+}
+
 HarmonicAcp::HarmonicAcp(QObject *parent)
     : QObject(parent)
 {
@@ -268,6 +289,10 @@ void HarmonicAcp::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
 void HarmonicAcp::onProcessError(QProcess::ProcessError error)
 {
-    Q_UNUSED(error);
-    Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(m_process->errorString()));
+    if (!m_process) {
+        return;
+    }
+
+    const QString errorString = m_process->errorString();
+    Q_EMIT errorOccurred(QStringLiteral("ACP process %1: %2").arg(processErrorName(error), errorString));
 }

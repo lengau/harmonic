@@ -212,6 +212,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     , m_waitingForFirstChunk(false)
     , m_cancelRequested(false)
     , m_clearSessionPending(false)
+    , m_dropInFlightResponse(false)
     , m_backendErrorReported(false)
 {
     auto *layout = new QVBoxLayout(this);
@@ -322,6 +323,7 @@ void HarmonicChatWidget::clearSession()
     m_pendingMessage.clear();
     if (hasActiveGeneration()) {
         m_clearSessionPending = true;
+        m_dropInFlightResponse = true;
         cancelCurrentGeneration();
         return;
     }
@@ -441,6 +443,7 @@ void HarmonicChatWidget::startStreaming()
     m_isStreaming = true;
     m_cancelRequested = false;
     m_clearSessionPending = false;
+    m_dropInFlightResponse = false;
     m_backendErrorReported = false;
     m_streamBuffer.clear();
     m_stderrLineBuffer.clear();
@@ -457,7 +460,7 @@ void HarmonicChatWidget::onReadyReadStdout()
     }
 
     const QString text = QString::fromUtf8(m_process->readAllStandardOutput());
-    if (text.isEmpty() || !m_isStreaming || m_cancelRequested) {
+    if (text.isEmpty() || !m_isStreaming || m_cancelRequested || m_dropInFlightResponse) {
         return;
     }
 
@@ -479,14 +482,14 @@ void HarmonicChatWidget::onReadyReadStderr()
 
     m_stderrOutput += text;
 
-    if (!m_cancelRequested) {
+    if (!m_cancelRequested && !m_dropInFlightResponse) {
         processStderrChunk(text, false);
     }
 }
 
 void HarmonicChatWidget::finishStreaming()
 {
-    const bool cancelled = m_cancelRequested;
+    const bool cancelled = m_cancelRequested || m_clearSessionPending || m_dropInFlightResponse;
     const QString response = m_streamBuffer.trimmed();
     m_isStreaming = false;
     m_streamBuffer.clear();
@@ -505,7 +508,7 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 {
     if (m_process) {
         const QString remaining = QString::fromUtf8(m_process->readAllStandardOutput());
-        if (!remaining.isEmpty()) {
+        if (!remaining.isEmpty() && !m_dropInFlightResponse) {
             m_streamBuffer += remaining;
             hideTypingIndicator();
         }
@@ -513,10 +516,10 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
         const QString stderrRemainder = QString::fromUtf8(m_process->readAllStandardError());
         if (!stderrRemainder.isEmpty()) {
             m_stderrOutput += stderrRemainder;
-            if (!m_cancelRequested) {
+            if (!m_cancelRequested && !m_dropInFlightResponse) {
                 processStderrChunk(stderrRemainder, true);
             }
-        } else if (!m_cancelRequested) {
+        } else if (!m_cancelRequested && !m_dropInFlightResponse) {
             processStderrChunk(QString(), true);
         }
     }
@@ -567,6 +570,13 @@ void HarmonicChatWidget::onProcessFinished(int exitCode, QProcess::ExitStatus st
 void HarmonicChatWidget::onProcessError(QProcess::ProcessError error)
 {
     if (!m_process) {
+        return;
+    }
+
+    if (m_dropInFlightResponse && m_clearSessionPending) {
+        if (m_process->state() != QProcess::NotRunning) {
+            m_process->kill();
+        }
         return;
     }
 
@@ -654,6 +664,7 @@ void HarmonicChatWidget::resetSessionState()
     m_cancelRequested = false;
     m_isStreaming = false;
     m_clearSessionPending = false;
+    m_dropInFlightResponse = false;
     m_pendingMessage.clear();
     m_streamBuffer.clear();
     m_stderrLineBuffer.clear();
