@@ -148,10 +148,9 @@ void HarmonicConfigPage::apply() {
     }
 }
 
-void HarmonicConfigPage::reset()
-{
+void HarmonicConfigPage::reset() {
     m_isInitializing = true;
-
+    
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
