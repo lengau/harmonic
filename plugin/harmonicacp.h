@@ -9,11 +9,10 @@
 
 /// ACP (Agent Client Protocol) client for communicating with copilot --acp.
 /// Manages the JSON-RPC session over stdin/stdout.
-class HarmonicAcp : public QObject
-{
+class HarmonicAcp : public QObject {
     Q_OBJECT
 
-public:
+  public:
     explicit HarmonicAcp(QObject *parent = nullptr);
     ~HarmonicAcp() override;
 
@@ -27,7 +26,7 @@ public:
     void respondToPermission(const QJsonValue &requestId, const QString &optionId);
     void denyPermission(const QJsonValue &requestId);
 
-Q_SIGNALS:
+  Q_SIGNALS:
     void initialized(const QJsonObject &agentInfo);
     void sessionCreated(const QString &sessionId);
     void textChunk(const QString &text);
@@ -39,13 +38,13 @@ Q_SIGNALS:
     void errorOccurred(const QString &message);
     void processFinished();
 
-private Q_SLOTS:
+  private Q_SLOTS:
     void onProcessStarted();
     void onReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
     void onProcessError(QProcess::ProcessError error);
 
-private:
+  private:
     void sendRequest(const QString &method, const QJsonObject &params);
     void sendNotification(const QString &method, const QJsonObject &params);
     void sendResponse(const QJsonValue &id, const QJsonObject &result);
