@@ -427,7 +427,7 @@ void HarmonicChatWidget::cancelCurrentGeneration()
 
     if (!m_process || m_process->state() == QProcess::NotRunning) {
         finishStreaming();
-        if (m_clearSessionPending) {
+        if (m_clearSessionPending && !m_process) {
             resetSessionState();
         }
         return;
