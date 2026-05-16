@@ -69,6 +69,7 @@ private:
     void processQueuedMessage();
     void resetAcpState();
 
+    // UI widgets
     QTextEdit *m_chatLog = nullptr;
     ChatInputEdit *m_input = nullptr;
     QPushButton *m_sendButton = nullptr;
@@ -77,8 +78,12 @@ private:
     QLabel *m_permissionLabel = nullptr;
     QHBoxLayout *m_permissionLayout = nullptr;
     QTimer *m_typingTimer = nullptr;
+
+    // Backend processes
     QProcess *m_process = nullptr;
     HarmonicAcp *m_acp = nullptr;
+
+    // Prompt/session state
     QString m_context;
     QString m_workingDirectory;
     QString m_streamBuffer;
@@ -86,6 +91,8 @@ private:
     QString m_pendingAcpPrompt;
     QString m_acpSessionCwd;
     QStringList m_inputHistory;
+
+    // UI state
     int m_historyPosition = 0;
     int m_typingDots = 0;
     bool m_isStreaming = false;
