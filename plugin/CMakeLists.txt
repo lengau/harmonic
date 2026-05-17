@@ -38,7 +38,6 @@ add_library(harmonicplugin MODULE
     harmonicconfigpage.cpp
     harmonicchatwidget.cpp
     harmonicacp.cpp
-    harmonicmarkdown.cpp
 )
 
 add_dependencies(harmonicplugin harmonic_rust_lib)
@@ -88,4 +87,5 @@ if(BUILD_TESTING)
         BUILD_RPATH "${HARMONIC_LIB_DIR}"
     )
     add_test(NAME test_harmonic_ffi COMMAND test_harmonic_ffi)
+
 endif()

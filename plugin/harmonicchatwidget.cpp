@@ -1,6 +1,5 @@
 #include "harmonicchatwidget.h"
 #include "harmonicacp.h"
-#include "harmonicmarkdown.h"
 
 #include <KConfigGroup>
 #include <KLocalizedString>
@@ -19,6 +18,8 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QTextEdit>
+#include <QTextDocument>
+#include <QTextDocumentFragment>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -71,6 +72,13 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              messageTitleForRole(role).toHtmlEscaped(),
              contentStyle,
              body);
+}
+
+QString renderMarkdownToHtml(const QString &markdown) {
+    return QTextDocumentFragment::fromMarkdown(
+               markdown,
+               QTextDocument::MarkdownDialectGitHub)
+        .toHtml();
 }
 } // namespace
 
@@ -455,7 +463,7 @@ void HarmonicChatWidget::finishStreaming() {
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), response, harmonicMarkdownToHtml(response));
+        appendMessage(QStringLiteral("assistant"), response, renderMarkdownToHtml(response));
     } else {
         refreshChatLog();
     }
