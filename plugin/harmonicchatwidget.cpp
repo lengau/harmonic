@@ -75,8 +75,7 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              body);
 }
 
-int markdownFenceLength(const QString &text)
-{
+int markdownFenceLength(const QString &text) {
     int longestRun = 0;
     int currentRun = 0;
 
@@ -654,6 +653,8 @@ void HarmonicChatWidget::appendMessage(const QString &role,
 }
 
 void HarmonicChatWidget::refreshChatLog() {
+    bool renderedInFallback = false;
+
     if (m_markdownPart) {
         QString markdown;
         for (const auto &msg : std::as_const(m_conversation)) {
@@ -665,35 +666,43 @@ void HarmonicChatWidget::refreshChatLog() {
             }
         }
         if (m_isStreaming && !m_streamBuffer.isEmpty()) {
-            markdown += QStringLiteral("### Harmonic\n") + m_streamBuffer + QStringLiteral("\n");
+            markdown += messageHeadingForRole(QStringLiteral("assistant")) + m_streamBuffer + QStringLiteral("\n");
         }
         m_markdownPart->closeUrl();
         if (m_markdownPart->openStream(QStringLiteral("text/markdown"), QUrl(QStringLiteral("memory:harmonic-chat.md")))) {
             m_markdownPart->writeStream(markdown.toUtf8());
             m_markdownPart->closeStream();
-            return;
+        } else {
+            renderedInFallback = true;
         }
+    } else {
+        renderedInFallback = true;
     }
 
-    if (!m_fallbackChatLog) {
-        return;
+    if (renderedInFallback && m_fallbackChatLog) {
+        QString html;
+        for (const auto &msg : std::as_const(m_conversation)) {
+            html += renderMessageHtml(msg.role, msg.content);
+        }
+        if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+            html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
+        }
+
+        m_fallbackChatLog->setHtml(html);
     }
 
-    QString html;
-    for (const auto &msg : std::as_const(m_conversation)) {
-        html += renderMessageHtml(msg.role, msg.content);
-    }
-    if (m_isStreaming && !m_streamBuffer.isEmpty()) {
-        html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
-    }
-
-    m_fallbackChatLog->setHtml(html);
     scrollChatToBottom();
 }
 
 void HarmonicChatWidget::scrollChatToBottom() {
+    QScrollBar *sb = nullptr;
     if (m_fallbackChatLog) {
-        auto *sb = m_fallbackChatLog->verticalScrollBar();
+        sb = m_fallbackChatLog->verticalScrollBar();
+    } else if (m_chatLog) {
+        sb = m_chatLog->findChild<QScrollBar *>();
+    }
+
+    if (sb) {
         sb->setValue(sb->maximum());
     }
 }
