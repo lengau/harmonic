@@ -1,0 +1,37 @@
+name: harmonic
+version: "0.1.0"
+summary: AI-assisted vibecoding plugin for Kate
+description: |
+  Harmonic adds AI-assisted coding workflows to the Kate editor.
+  It provides prompt-based code generation and an in-editor chat tool view.
+base: ubuntu@26.04
+maintainer: Alex Lowe <lengau@gmail.com>
+license: LicenseRef-PPL-1.0
+source-code: https://github.com/lengau/harmonic
+issues: https://github.com/lengau/harmonic/issues
+section: editors
+
+packages:
+  harmonic:
+    depends:
+      - kate
+      - markdownpart
+
+parts:
+  harmonic:
+    plugin: cmake
+    source: .
+    cmake-parameters:
+      - -DBUILD_TESTING=OFF
+    build-packages:
+      - build-essential
+      - cargo
+      - cmake
+      - extra-cmake-modules
+      - qt6-base-dev
+      - libkf6config-dev
+      - libkf6i18n-dev
+      - libkf6parts-dev
+      - libkf6texteditor-dev
+      - libkf6xmlgui-dev
+      - rustc

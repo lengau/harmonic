@@ -1,0 +1,5 @@
+harmonic (0.1.0-0ubuntu1) UNRELEASED; urgency=medium
+
+  * Add Debian/Launchpad packaging metadata and build rules.
+
+ -- Alex Lowe <lengau@gmail.com>  Sun, 17 May 2026 22:06:00 +0200
