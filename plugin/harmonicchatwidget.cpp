@@ -363,8 +363,10 @@ void HarmonicChatWidget::sendMessage(const QString &messageOverride) {
     const bool acpInitializing = backend == QStringLiteral("copilot") && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
 
     if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
-        m_pendingMessages.append(message);
-        if (!isFromQueue) {
+        if (isFromQueue) {
+            m_pendingMessages.prepend(message);
+        } else {
+            m_pendingMessages.append(message);
             m_input->clear();
         }
         return;
@@ -927,6 +929,16 @@ void HarmonicChatWidget::hidePermissionPrompt() {
 
 void HarmonicChatWidget::processQueuedMessage() {
     if (m_pendingMessages.isEmpty() || m_isStreaming) {
+        return;
+    }
+
+    // Check if we are still effectively busy (e.g. ACP still initializing)
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group = config->group(QStringLiteral("Harmonic"));
+    const QString backend = group.readEntry("Backend", "copilot");
+    const bool acpInitializing = backend == QStringLiteral("copilot") && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
+
+    if ((m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
         return;
     }
 

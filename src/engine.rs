@@ -220,15 +220,17 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
         ));
     }
 
-    // Split the command string into parts (crude split, but better than shell)
-    let parts: Vec<&str> = command.split_whitespace().collect();
+    let parts = shlex::split(command).ok_or_else(|| {
+        EngineError::invalid_config(format!("Invalid custom command: {command}"))
+    })?;
+
     if parts.is_empty() {
          return Err(EngineError::invalid_config(
             "Custom command is empty".to_string(),
         ));
     }
 
-    let mut proc = Command::new(parts[0]);
+    let mut proc = Command::new(&parts[0]);
     if parts.len() > 1 {
         proc.args(&parts[1..]);
     }
@@ -240,7 +242,7 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
 
     if !output.status.success() {
         return Err(EngineError::process_failed(process_failure_message(
-            parts[0], &output,
+            &parts[0], &output,
         )));
     }
 
