@@ -314,8 +314,9 @@ void HarmonicChatWidget::clearSession() {
     hideTypingIndicator();
     hidePermissionPrompt();
     updatePrimaryButton();
-    refreshChatLog();
+    refreshChatLog(true);
 }
+
 
 QString HarmonicChatWidget::buildConversationPrompt(const QString &message) const {
     QString prompt;
@@ -693,11 +694,22 @@ void HarmonicChatWidget::ensureFallbackChatLog() {
     m_chatLog = m_fallbackChatLog;
 }
 
-void HarmonicChatWidget::refreshChatLog() {
+void HarmonicChatWidget::refreshChatLog(bool fullRefresh) {
+    if (fullRefresh) {
+        m_lastRenderedMessageCount = 0;
+        m_lastRenderedStreamingSize = 0;
+        m_streamingPosition = 0;
+        if (m_fallbackChatLog) {
+            m_fallbackChatLog->clear();
+        }
+    }
+
     const bool usingFallbackView = m_fallbackChatLog && m_chatLog == m_fallbackChatLog;
     bool renderedInFallback = usingFallbackView;
 
     if (!renderedInFallback && m_markdownPart) {
+        // Main rendering path (KMarkdown) still does full re-render for now
+        // as KParts don't easily support incremental HTML/Markdown streaming.
         QString markdown;
         for (const auto &msg : std::as_const(m_conversation)) {
             markdown += messageHeadingForRole(msg.role);
@@ -732,22 +744,37 @@ void HarmonicChatWidget::refreshChatLog() {
 
     if (renderedInFallback) {
         ensureFallbackChatLog();
-    }
+        if (m_fallbackChatLog) {
+            QTextCursor cursor(m_fallbackChatLog->document());
+            cursor.movePosition(QTextCursor::End);
 
-    if (renderedInFallback && m_fallbackChatLog) {
-        QString html;
-        for (const auto &msg : std::as_const(m_conversation)) {
-            if (msg.role == QStringLiteral("assistant")) {
-                html += renderMessageHtml(msg.role, markdownToHtml(msg.content), true);
-            } else {
-                html += renderMessageHtml(msg.role, msg.content);
+            // 1. Append new full messages that have completed
+            while (m_lastRenderedMessageCount < m_conversation.size()) {
+                const auto &msg = m_conversation.at(m_lastRenderedMessageCount);
+                const QString html = (msg.role == QStringLiteral("assistant"))
+                                         ? renderMessageHtml(msg.role, markdownToHtml(msg.content), true)
+                                         : renderMessageHtml(msg.role, msg.content);
+                cursor.insertHtml(html);
+                m_lastRenderedMessageCount++;
+                m_lastRenderedStreamingSize = 0;
+                m_streamingPosition = cursor.position();
+            }
+
+            // 2. Handle the active streaming chunk
+            if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+                // Remove the previous partial rendering of this stream
+                cursor.setPosition(m_streamingPosition);
+                cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
+
+                // Render the new full partial message
+                const QString html = renderMessageHtml(QStringLiteral("assistant"), markdownToHtml(m_streamBuffer), true);
+                cursor.insertHtml(html);
+                m_lastRenderedStreamingSize = m_streamBuffer.size();
+            } else if (!m_isStreaming) {
+                m_lastRenderedStreamingSize = 0;
             }
         }
-        if (m_isStreaming && !m_streamBuffer.isEmpty()) {
-            html += renderMessageHtml(QStringLiteral("assistant"), markdownToHtml(m_streamBuffer), true);
-        }
-
-        m_fallbackChatLog->setHtml(html);
     }
 
     scrollChatToBottom();
