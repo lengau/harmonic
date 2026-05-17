@@ -8,6 +8,7 @@
 #include <KSharedConfig>
 
 #include <QAbstractTextDocumentLayout>
+#include <QAbstractScrollArea>
 #include <QAction>
 #include <QDir>
 #include <QHBoxLayout>
@@ -17,6 +18,7 @@
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QTextEdit>
@@ -104,7 +106,14 @@ QString messageHeadingForRole(const QString &role) {
 QString markdownToHtml(const QString &markdown) {
     QTextDocument doc;
     doc.setMarkdown(markdown);
-    return doc.toHtml();
+    const QString html = doc.toHtml();
+    static const QRegularExpression bodyPattern(QStringLiteral("<body[^>]*>(.*)</body>"),
+                                                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch bodyMatch = bodyPattern.match(html);
+    if (bodyMatch.hasMatch()) {
+        return bodyMatch.captured(1);
+    }
+    return html;
 }
 
 QString blockquoteText(const QString &text) {
@@ -748,8 +757,16 @@ void HarmonicChatWidget::scrollChatToBottom() {
     QScrollBar *sb = nullptr;
     if (auto *textEdit = qobject_cast<QTextEdit *>(m_chatLog)) {
         sb = textEdit->verticalScrollBar();
+    } else if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(m_chatLog)) {
+        sb = scrollArea->verticalScrollBar();
     } else if (m_chatLog) {
-        sb = m_chatLog->findChild<QScrollBar *>();
+        const QList<QScrollBar *> scrollBars = m_chatLog->findChildren<QScrollBar *>();
+        for (QScrollBar *candidate : scrollBars) {
+            if (candidate && candidate->orientation() == Qt::Vertical) {
+                sb = candidate;
+                break;
+            }
+        }
     }
 
     if (sb) {
