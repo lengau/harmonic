@@ -30,7 +30,7 @@ jobs:
           fi
 
           mapfile -t changed_cpp_files < <(
-            git diff --name-only --diff-filter=ACMR "${diff_range}" -- 'include/*.h' 'plugin/*.h' 'plugin/*.cpp'
+            git diff --name-only --diff-filter=ACMR "${diff_range}" -- 'include/*.h' 'plugin/*.h' 'plugin/*.cpp' 'plugin/tests/*.cpp'
           )
 
           {
@@ -135,4 +135,12 @@ jobs:
             cmake -S plugin -B plugin/build -DCMAKE_BUILD_TYPE=Release
             timeout --signal=TERM --kill-after=5m 45m \
               cmake --build plugin/build -j"$(nproc)"
+          '
+
+      - name: Run plugin tests
+        run: |
+          sudo lxc exec harmonic-ci -- bash -c '
+            set -euo pipefail
+            cd /root/harmonic
+            QT_QPA_PLATFORM=offscreen ctest --test-dir plugin/build --output-on-failure
           '

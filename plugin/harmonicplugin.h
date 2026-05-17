@@ -16,11 +16,15 @@ namespace KTextEditor {
 class Document;
 }
 
-class HarmonicPlugin : public KTextEditor::Plugin
-{
+struct VibecodeResult {
+    bool success = false;
+    QString text;
+};
+
+class HarmonicPlugin : public KTextEditor::Plugin {
     Q_OBJECT
 
-public:
+  public:
     explicit HarmonicPlugin(QObject *parent, const QVariantList &args);
     ~HarmonicPlugin() override;
 
@@ -29,20 +33,19 @@ public:
     KTextEditor::ConfigPage *configPage(int number, QWidget *parent) override;
 };
 
-class HarmonicView : public QObject, public KXMLGUIClient
-{
+class HarmonicView : public QObject, public KXMLGUIClient {
     Q_OBJECT
 
-public:
+  public:
     explicit HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *mainWindow);
     ~HarmonicView() override;
 
-private Q_SLOTS:
+  private Q_SLOTS:
     void vibecode();
     void updateChatContext();
     void handleVibecodeFinished();
 
-private:
+  private:
     void showStatusMessage(const QString &message, int timeoutMs = 0) const;
 
     KTextEditor::MainWindow *m_mainWindow;
@@ -50,7 +53,7 @@ private:
     QWidget *m_toolView = nullptr;
     HarmonicChatWidget *m_chatWidget = nullptr;
     QAction *m_vibecodeAction = nullptr;
-    QFutureWatcher<QString> *m_vibecodeWatcher = nullptr;
+    QFutureWatcher<VibecodeResult> *m_vibecodeWatcher = nullptr;
     QPointer<KTextEditor::Document> m_pendingDocument;
     int m_pendingInsertLine = -1;
 };
