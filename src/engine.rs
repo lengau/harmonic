@@ -220,23 +220,32 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
         ));
     }
 
-    let output = Command::new("sh")
-        .args(["-c", &format!("{command} {}", shell_escape(prompt))])
+    // Split the command string into parts (crude split, but better than shell)
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    if parts.is_empty() {
+         return Err(EngineError::invalid_config(
+            "Custom command is empty".to_string(),
+        ));
+    }
+
+    let mut proc = Command::new(parts[0]);
+    if parts.len() > 1 {
+        proc.args(&parts[1..]);
+    }
+    proc.arg(prompt);
+
+    let output = proc
         .output()
-        .map_err(|e| EngineError::spawn_failed(e.to_string()))?;
+        .map_err(|e| EngineError::spawn_failed(format!("{}: {}", parts[0], e)))?;
 
     if !output.status.success() {
         return Err(EngineError::process_failed(process_failure_message(
-            command, &output,
+            parts[0], &output,
         )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(strip_code_fences(stdout.trim()))
-}
-
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Strip markdown code fences if present.
@@ -350,9 +359,9 @@ mod tests {
     }
 
     #[test]
-    fn test_shell_escape() {
-        assert_eq!(shell_escape("hello world"), "'hello world'");
-        assert_eq!(shell_escape("it's"), "'it'\\''s'");
+    fn test_run_custom_echo() {
+        let result = run_custom("echo", "hello world").unwrap();
+        assert_eq!(result, "hello world");
     }
 
     #[test]
