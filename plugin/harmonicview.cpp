@@ -4,6 +4,7 @@
 
 #include <KTextEditor/View>
 #include <KTextEditor/Document>
+#include <KTextEditor/Message>
 #include <KLocalizedString>
 #include <KXMLGUIFactory>
 #include <KActionCollection>
@@ -11,13 +12,47 @@
 #include <KConfigGroup>
 
 #include <QAction>
+#include <functional>
 #include <QFileInfo>
 #include <QIcon>
 #include <QInputDialog>
+#include <QGuiApplication>
 #include <QMainWindow>
-#include <QMessageBox>
 #include <QStatusBar>
+#include <QClipboard>
 #include <QtConcurrent/QtConcurrentRun>
+
+namespace {
+void postEditorMessage(KTextEditor::MainWindow *mainWindow,
+                       const QString &text,
+                       KTextEditor::Message::MessageType type,
+                       int autoHideMs,
+                       const QString &actionText = QString(),
+                       const std::function<void()> &actionHandler = {}) {
+    if (!mainWindow) {
+        return;
+    }
+
+    auto *view = mainWindow->activeView();
+    if (!view || !view->document()) {
+        return;
+    }
+
+    auto *message = new KTextEditor::Message(text, type);
+    message->setPosition(KTextEditor::Message::TopInView);
+    message->setWordWrap(true);
+    message->setView(view);
+    message->setAutoHide(autoHideMs);
+
+    if (!actionText.isEmpty() && actionHandler) {
+        auto *action = new QAction(actionText, message);
+        QObject::connect(action, &QAction::triggered, message, actionHandler);
+        message->addAction(action, false);
+    }
+
+    view->document()->postMessage(message);
+}
+} // namespace
 
 HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *mainWindow)
     : QObject(mainWindow), KXMLGUIClient(), m_mainWindow(mainWindow), m_plugin(plugin) {
@@ -92,15 +127,15 @@ void HarmonicView::showStatusMessage(const QString &message, int timeoutMs) cons
 
 void HarmonicView::vibecode() {
     if (m_vibecodeWatcher->isRunning()) {
-        showStatusMessage(i18n("Harmonic: Generation already in progress"), 3000);
+        const QString message = i18n("Harmonic: Generation already in progress");
+        showStatusMessage(message, 3000);
+        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Warning, 3000);
         return;
     }
 
     auto *view = m_mainWindow->activeView();
     if (!view) {
-        QMessageBox::warning(m_mainWindow->window(),
-                             i18n("Harmonic"),
-                             i18n("Please open a file first."));
+        showStatusMessage(i18n("Harmonic: Please open a file first."), 5000);
         return;
     }
 
@@ -161,7 +196,9 @@ void HarmonicView::vibecode() {
     m_pendingDocument = doc;
     m_pendingInsertLine = insertLine;
     m_vibecodeAction->setEnabled(false);
-    showStatusMessage(i18n("Harmonic: Generating..."));
+    const QString generatingMessage = i18n("Harmonic: Generating...");
+    showStatusMessage(generatingMessage);
+    postEditorMessage(m_mainWindow, generatingMessage, KTextEditor::Message::Information, 2000);
 
     m_vibecodeWatcher->setFuture(QtConcurrent::run([promptBytes,
                                                     contextBytes,
@@ -205,13 +242,24 @@ void HarmonicView::handleVibecodeFinished() {
     m_vibecodeAction->setEnabled(true);
 
     const VibecodeResult generation = m_vibecodeWatcher->result();
-    QWidget *parentWidget = m_mainWindow->window();
 
     if (!generation.success) {
-        showStatusMessage(i18n("Harmonic: Generation failed"), 5000);
-        QMessageBox::warning(parentWidget, i18n("Harmonic"), generation.text);
+        const QString errorMessage = i18n("Harmonic: Generation failed");
+        showStatusMessage(errorMessage, 5000);
+        postEditorMessage(m_mainWindow,
+                          errorMessage,
+                          KTextEditor::Message::Error,
+                          7000,
+                          i18n("Copy details"),
+                          [details = generation.text]() {
+                              if (auto *clipboard = QGuiApplication::clipboard()) {
+                                  clipboard->setText(details);
+                              }
+                          });
     } else if (!m_pendingDocument) {
-        showStatusMessage(i18n("Harmonic: Generation completed, but the document was closed."), 5000);
+        const QString message = i18n("Harmonic: Generation completed, but the document was closed.");
+        showStatusMessage(message, 5000);
+        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Warning, 5000);
     } else {
         const int currentLine = qMax(0, qMin(m_pendingInsertLine, m_pendingDocument->lines() - 1));
         const int insertLine = currentLine + 1;
@@ -221,7 +269,9 @@ void HarmonicView::handleVibecodeFinished() {
                 QStringLiteral("\n"));
         }
         m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generation.text + QStringLiteral("\n"));
-        showStatusMessage(i18n("Harmonic: Generation complete"), 3000);
+        const QString message = i18n("Harmonic: Generation complete");
+        showStatusMessage(message, 3000);
+        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Positive, 3000);
     }
 
     m_pendingDocument.clear();
