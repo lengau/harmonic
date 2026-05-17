@@ -96,7 +96,7 @@ class HarmonicChatWidget : public QWidget {
     QString m_context;
     QString m_workingDirectory;
     QString m_streamBuffer;
-    QString m_pendingMessage;
+    QStringList m_pendingMessages;
     QString m_pendingAcpPrompt;
     QString m_acpSessionCwd;
     QStringList m_inputHistory;

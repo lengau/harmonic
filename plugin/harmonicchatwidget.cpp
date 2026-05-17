@@ -293,7 +293,7 @@ void HarmonicChatWidget::setWorkingDirectory(const QString &workingDirectory) {
 void HarmonicChatWidget::clearSession() {
     m_conversation.clear();
     m_streamBuffer.clear();
-    m_pendingMessage.clear();
+    m_pendingMessages.clear();
     m_cancelRequested = false;
 
     if (m_process) {
@@ -362,7 +362,7 @@ void HarmonicChatWidget::sendMessage() {
     const bool acpInitializing = backend == QStringLiteral("copilot") && (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
 
     if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
-        m_pendingMessage = message;
+        m_pendingMessages.append(message);
         m_input->clear();
         return;
     }
@@ -921,12 +921,11 @@ void HarmonicChatWidget::hidePermissionPrompt() {
 }
 
 void HarmonicChatWidget::processQueuedMessage() {
-    if (m_pendingMessage.isEmpty() || m_isStreaming) {
+    if (m_pendingMessages.isEmpty() || m_isStreaming) {
         return;
     }
 
-    const QString queued = m_pendingMessage;
-    m_pendingMessage.clear();
+    const QString queued = m_pendingMessages.takeFirst();
     m_input->setPlainText(queued);
     sendMessage();
 }
