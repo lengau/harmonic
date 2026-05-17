@@ -20,6 +20,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QTextEdit>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -98,6 +99,16 @@ QString markdownCodeBlock(const QString &text) {
 
 QString messageHeadingForRole(const QString &role) {
     return QStringLiteral("### %1\n").arg(messageTitleForRole(role));
+}
+
+QString markdownToHtml(const QString &markdown) {
+    QTextDocument doc;
+    doc.setMarkdown(markdown);
+    return doc.toHtml();
+}
+
+QString blockquoteText(const QString &text) {
+    return text.split(QChar(u'\n')).join(QStringLiteral("\n> "));
 }
 
 } // namespace
@@ -652,17 +663,48 @@ void HarmonicChatWidget::appendMessage(const QString &role,
     refreshChatLog();
 }
 
-void HarmonicChatWidget::refreshChatLog() {
-    bool renderedInFallback = false;
+void HarmonicChatWidget::ensureFallbackChatLog() {
+    if (m_fallbackChatLog) {
+        return;
+    }
 
-    if (m_markdownPart) {
+    m_fallbackChatLog = new QTextEdit(this);
+    m_fallbackChatLog->setReadOnly(true);
+    m_fallbackChatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+
+    if (auto *mainLayout = qobject_cast<QVBoxLayout *>(layout())) {
+        mainLayout->insertWidget(0, m_fallbackChatLog);
+    } else if (layout()) {
+        layout()->addWidget(m_fallbackChatLog);
+    }
+
+    if (m_chatLog && m_chatLog != m_fallbackChatLog) {
+        m_chatLog->hide();
+    }
+    m_chatLog = m_fallbackChatLog;
+}
+
+void HarmonicChatWidget::refreshChatLog() {
+    const bool usingFallbackView = m_fallbackChatLog && m_chatLog == m_fallbackChatLog;
+    bool renderedInFallback = usingFallbackView;
+
+    if (!renderedInFallback && m_markdownPart) {
         QString markdown;
         for (const auto &msg : std::as_const(m_conversation)) {
             markdown += messageHeadingForRole(msg.role);
             if (msg.role == QStringLiteral("assistant")) {
                 markdown += msg.content + QStringLiteral("\n\n");
-            } else {
+            } else if (msg.role == QStringLiteral("user")) {
                 markdown += markdownCodeBlock(msg.content) + QStringLiteral("\n");
+            } else if (msg.role == QStringLiteral("error")) {
+                markdown += QStringLiteral("> **%1**\n>\n> %2\n\n")
+                                .arg(messageTitleForRole(msg.role),
+                                     blockquoteText(msg.content));
+            } else if (msg.role == QStringLiteral("status")) {
+                markdown += QStringLiteral("**%1:** %2\n\n")
+                                .arg(messageTitleForRole(msg.role), msg.content);
+            } else {
+                markdown += msg.content + QStringLiteral("\n\n");
             }
         }
         if (m_isStreaming && !m_streamBuffer.isEmpty()) {
@@ -679,13 +721,21 @@ void HarmonicChatWidget::refreshChatLog() {
         renderedInFallback = true;
     }
 
+    if (renderedInFallback) {
+        ensureFallbackChatLog();
+    }
+
     if (renderedInFallback && m_fallbackChatLog) {
         QString html;
         for (const auto &msg : std::as_const(m_conversation)) {
-            html += renderMessageHtml(msg.role, msg.content);
+            if (msg.role == QStringLiteral("assistant")) {
+                html += renderMessageHtml(msg.role, markdownToHtml(msg.content), true);
+            } else {
+                html += renderMessageHtml(msg.role, msg.content);
+            }
         }
         if (m_isStreaming && !m_streamBuffer.isEmpty()) {
-            html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
+            html += renderMessageHtml(QStringLiteral("assistant"), markdownToHtml(m_streamBuffer), true);
         }
 
         m_fallbackChatLog->setHtml(html);
@@ -696,8 +746,8 @@ void HarmonicChatWidget::refreshChatLog() {
 
 void HarmonicChatWidget::scrollChatToBottom() {
     QScrollBar *sb = nullptr;
-    if (m_fallbackChatLog) {
-        sb = m_fallbackChatLog->verticalScrollBar();
+    if (auto *textEdit = qobject_cast<QTextEdit *>(m_chatLog)) {
+        sb = textEdit->verticalScrollBar();
     } else if (m_chatLog) {
         sb = m_chatLog->findChild<QScrollBar *>();
     }

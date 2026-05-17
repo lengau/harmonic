@@ -74,6 +74,7 @@ class HarmonicChatWidget : public QWidget {
     QString buildAcpPrompt(const QString &message) const;
     void processQueuedMessage();
     void resetAcpState();
+    void ensureFallbackChatLog();
 
     // UI widgets
     QWidget *m_chatLog = nullptr;
