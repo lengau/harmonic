@@ -75,21 +75,30 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              body);
 }
 
+int markdownFenceLength(const QString &text)
+{
+    int longestRun = 0;
+    int currentRun = 0;
+
+    for (const QChar ch : text) {
+        if (ch == QChar(u'`')) {
+            ++currentRun;
+            longestRun = qMax(longestRun, currentRun);
+        } else {
+            currentRun = 0;
+        }
+    }
+
+    return qMax(3, longestRun + 1);
+}
+
 QString markdownCodeBlock(const QString &text) {
-    return QStringLiteral("```\n%1\n```\n").arg(text);
+    const QString fence(markdownFenceLength(text), QChar(u'`'));
+    return QStringLiteral("%1\n%2\n%1\n").arg(fence, text);
 }
 
 QString messageHeadingForRole(const QString &role) {
-    if (role == QStringLiteral("user")) {
-        return QStringLiteral("### You\n");
-    }
-    if (role == QStringLiteral("error")) {
-        return QStringLiteral("### Error\n");
-    }
-    if (role == QStringLiteral("status")) {
-        return QStringLiteral("### Status\n");
-    }
-    return QStringLiteral("### Harmonic\n");
+    return QStringLiteral("### %1\n").arg(messageTitleForRole(role));
 }
 
 } // namespace
@@ -662,8 +671,8 @@ void HarmonicChatWidget::refreshChatLog() {
         if (m_markdownPart->openStream(QStringLiteral("text/markdown"), QUrl(QStringLiteral("memory:harmonic-chat.md")))) {
             m_markdownPart->writeStream(markdown.toUtf8());
             m_markdownPart->closeStream();
+            return;
         }
-        return;
     }
 
     if (!m_fallbackChatLog) {
