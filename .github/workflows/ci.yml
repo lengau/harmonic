@@ -2,14 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
-  build-and-test:
+  lint:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,25 +38,96 @@ jobs:
             echo "EOF"
           } >>"$GITHUB_OUTPUT"
 
-      - name: Set up LXD
-        uses: canonical/setup-lxd@v0.1.1
+      - name: Install clang-format
+        run: sudo apt-get update -y && sudo apt-get install -y clang-format
 
-      - name: Launch Ubuntu 26.04 container
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Run lint checks
+        env:
+          CLANG_FORMAT_FILES: ${{ steps.clang-format-targets.outputs.files }}
         run: |
-          sudo lxc launch ubuntu:26.04 harmonic-ci \
-            --config limits.cpu=4 \
-            --config limits.memory=8GB
-          sudo lxc exec harmonic-ci -- cloud-init status --wait
+          set -euo pipefail
+          cargo fmt --check --manifest-path Cargo.toml
+          cargo clippy --manifest-path Cargo.toml --all-targets --all-features -- -D warnings
+
+          style_file=".clang-format"
+          fallback_style_file=".clang-format.ci"
+          backup_style_file=".clang-format.bak"
+          if ! clang-format --style=file --dump-config >/dev/null 2>&1; then
+            sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" "${style_file}" > "${fallback_style_file}"
+            cp "${style_file}" "${backup_style_file}"
+            cp "${fallback_style_file}" "${style_file}"
+            trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
+          fi
+
+          mapfile -t style_targets <<<"$CLANG_FORMAT_FILES"
+          if [ "${#style_targets[@]}" -gt 0 ] && [ -n "${style_targets[0]}" ]; then
+            clang-format --style=file --dry-run --Werror -- "${style_targets[@]}"
+          else
+            echo "No C/C++ files changed; skipping clang-format check."
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up LXD
+        uses: canonical/setup-lxd@main
+
+      - name: Restore LXD image cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/lxd-cache
+          key: lxd-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.run_id }}
+          restore-keys: lxd-${{ hashFiles('.github/workflows/ci.yml') }}-
+
+      - name: Launch build container
+        run: |
+          shopt -s nullglob
+          CACHE_FILES=(/tmp/lxd-cache/*)
+          METADATA_IMAGE=""
+          ROOTFS_IMAGE=""
+
+          for CACHED_IMAGE in "${CACHE_FILES[@]}"; do
+            [ -f "$CACHED_IMAGE" ] || continue
+            case "$(basename "$CACHED_IMAGE")" in
+              *.rootfs.*)
+                ROOTFS_IMAGE="$CACHED_IMAGE"
+                ;;
+              *)
+                METADATA_IMAGE="$CACHED_IMAGE"
+                ;;
+            esac
+          done
+
+          if [ -n "$METADATA_IMAGE" ]; then
+            if [ -n "$ROOTFS_IMAGE" ]; then
+              lxc image import "$METADATA_IMAGE" "$ROOTFS_IMAGE" --alias harmonic-build-deps
+            else
+              lxc image import "$METADATA_IMAGE" --alias harmonic-build-deps
+            fi
+            lxc launch harmonic-build-deps harmonic-build
+            echo "HAVE_CACHE=true" >> "$GITHUB_ENV"
+          else
+            lxc launch ubuntu:26.04 harmonic-build
+            lxc exec harmonic-build -- cloud-init status --wait
+            echo "HAVE_CACHE=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Copy source into container
         run: |
-          tar -czf - --exclude=.git --exclude=target . \
-            | sudo lxc exec harmonic-ci -- bash -c \
-              'mkdir -p /root/harmonic && tar -xzf - -C /root/harmonic'
+          lxc exec harmonic-build -- mkdir -p /root/harmonic
+          tar -C "$GITHUB_WORKSPACE" -c . | lxc exec harmonic-build -- tar -C /root/harmonic -x
 
       - name: Install system dependencies
+        if: env.HAVE_CACHE == 'false'
         run: |
-          sudo lxc exec harmonic-ci -- bash -c '
+          lxc exec harmonic-build -- bash -c '
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -y
@@ -74,6 +144,7 @@ jobs:
               libkf6i18n-dev \
               libkf6texteditor-dev \
               libkf6xmlgui-dev \
+              libkf6coreaddons-dev \
               snapd \
               qt6-base-dev
             snap install rustup --classic
@@ -82,39 +153,25 @@ jobs:
             rustup component add rustfmt clippy
           '
 
-      - name: Run lint checks
-        env:
-          CLANG_FORMAT_FILES: ${{ steps.clang-format-targets.outputs.files }}
+      - name: Start background image export
+        if: env.HAVE_CACHE == 'false'
         run: |
-          printf '%s' "$CLANG_FORMAT_FILES" \
-            | sudo lxc exec harmonic-ci -- bash -c 'cat > /root/harmonic/.clang-format-targets'
-          sudo lxc exec harmonic-ci -- bash -c '
-            set -euo pipefail
-            export PATH="/snap/bin:$PATH"
-            cd /root/harmonic
-            cargo fmt --check --manifest-path /root/harmonic/Cargo.toml
-            cargo clippy --manifest-path /root/harmonic/Cargo.toml --all-targets --all-features -- -D warnings
-            style_file="/root/harmonic/.clang-format"
-            fallback_style_file="/root/harmonic/.clang-format.ci"
-            backup_style_file="/root/harmonic/.clang-format.bak"
-            if ! clang-format --style=file --dump-config >/dev/null 2>&1; then
-              sed "s/^BasedOnStyle: Qt$/BasedOnStyle: LLVM/" "${style_file}" > "${fallback_style_file}"
-              cp "${style_file}" "${backup_style_file}"
-              cp "${fallback_style_file}" "${style_file}"
-              trap "if [ -f \"${backup_style_file}\" ]; then mv \"${backup_style_file}\" \"${style_file}\"; fi; rm -f \"${fallback_style_file}\"" EXIT
-            fi
-            mapfile -t style_targets < /root/harmonic/.clang-format-targets
-            rm -f /root/harmonic/.clang-format-targets
-            if [ "${#style_targets[@]}" -gt 0 ] && [ -n "${style_targets[0]}" ]; then
-              clang-format --style=file --dry-run --Werror -- "${style_targets[@]}"
-            else
-              echo "No C/C++ files changed; skipping clang-format check."
-            fi
-          '
+          lxc snapshot harmonic-build deps
+          mkdir -p /tmp/lxd-cache
+          find /tmp/lxd-cache -mindepth 1 -delete
+          lxc image delete harmonic-build-deps 2>/dev/null || true
+          echo 1 > /tmp/lxd-export.exit
+          (
+            lxc publish harmonic-build/deps --alias harmonic-build-deps && \
+            lxc image export harmonic-build-deps /tmp/lxd-cache/
+            echo $? > /tmp/lxd-export.exit
+            lxc snapshot delete harmonic-build deps 2>/dev/null || true
+          ) > /tmp/lxd-export.log 2>&1 &
+          echo $! > /tmp/lxd-export.pid
 
       - name: Run Rust tests
         run: |
-          sudo lxc exec harmonic-ci -- bash -c '
+          lxc exec harmonic-build -- bash -c '
             set -euo pipefail
             export CI=true
             export CARGO_TERM_PROGRESS_WHEN=never
@@ -126,7 +183,7 @@ jobs:
 
       - name: Build Kate plugin (includes Rust release build)
         run: |
-          sudo lxc exec harmonic-ci -- bash -c '
+          lxc exec harmonic-build -- bash -c '
             set -euo pipefail
             export CI=true
             export CARGO_TERM_PROGRESS_WHEN=never
@@ -139,8 +196,29 @@ jobs:
 
       - name: Run plugin tests
         run: |
-          sudo lxc exec harmonic-ci -- bash -c '
+          lxc exec harmonic-build -- bash -c '
             set -euo pipefail
             cd /root/harmonic
             QT_QPA_PLATFORM=offscreen ctest --test-dir plugin/build --output-on-failure
           '
+
+      - name: Wait for background image export
+        if: env.HAVE_CACHE == 'false'
+        run: |
+          PID=$(cat /tmp/lxd-export.pid 2>/dev/null || true)
+          if [ -n "$PID" ]; then
+            while kill -0 "$PID" 2>/dev/null; do sleep 5; done
+          fi
+          EXIT=$(cat /tmp/lxd-export.exit 2>/dev/null || echo 1)
+          if [ "$EXIT" != "0" ]; then
+            echo "Image export failed:"
+            cat /tmp/lxd-export.log
+            exit "$EXIT"
+          fi
+
+      - name: Save LXD image cache
+        if: env.HAVE_CACHE == 'false' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/lxd-cache
+          key: lxd-${{ hashFiles('.github/workflows/ci.yml') }}-${{ github.run_id }}
