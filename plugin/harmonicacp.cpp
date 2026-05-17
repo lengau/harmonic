@@ -1,5 +1,7 @@
 #include "harmonicacp.h"
 
+#include <KShell>
+
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QPointer>
@@ -30,7 +32,15 @@ void HarmonicAcp::start(const QString &command, const QString &workingDir) {
     connect(m_process, &QProcess::finished, this, &HarmonicAcp::onProcessFinished);
     connect(m_process, &QProcess::errorOccurred, this, &HarmonicAcp::onProcessError);
 
-    m_process->start(command, {QStringLiteral("--acp")});
+    const QStringList commandParts = KShell::splitArgs(command);
+    if (commandParts.isEmpty()) {
+        Q_EMIT errorOccurred(QStringLiteral("Invalid ACP command configured"));
+        return;
+    }
+
+    QStringList args = commandParts.mid(1);
+    args << QStringLiteral("--acp");
+    m_process->start(commandParts.first(), args);
 }
 
 void HarmonicAcp::stop() {
