@@ -18,30 +18,25 @@
 #include <QInputDialog>
 #include <QGuiApplication>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QStatusBar>
 #include <QClipboard>
 #include <QtConcurrent/QtConcurrentRun>
 
 namespace {
-void postEditorMessage(KTextEditor::MainWindow *mainWindow,
+void postEditorMessage(KTextEditor::Document *document,
                        const QString &text,
                        KTextEditor::Message::MessageType type,
                        int autoHideMs,
                        const QString &actionText = QString(),
                        const std::function<void()> &actionHandler = {}) {
-    if (!mainWindow) {
-        return;
-    }
-
-    auto *view = mainWindow->activeView();
-    if (!view || !view->document()) {
+    if (!document) {
         return;
     }
 
     auto *message = new KTextEditor::Message(text, type);
     message->setPosition(KTextEditor::Message::TopInView);
     message->setWordWrap(true);
-    message->setView(view);
     message->setAutoHide(autoHideMs);
 
     if (!actionText.isEmpty() && actionHandler) {
@@ -50,7 +45,9 @@ void postEditorMessage(KTextEditor::MainWindow *mainWindow,
         message->addAction(action, false);
     }
 
-    view->document()->postMessage(message);
+    if (!document->postMessage(message)) {
+        delete message;
+    }
 }
 } // namespace
 
@@ -129,13 +126,15 @@ void HarmonicView::vibecode() {
     if (m_vibecodeWatcher->isRunning()) {
         const QString message = i18n("Harmonic: Generation already in progress");
         showStatusMessage(message, 3000);
-        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Warning, 3000);
+        postEditorMessage(m_pendingDocument, message, KTextEditor::Message::Warning, 3000);
         return;
     }
 
     auto *view = m_mainWindow->activeView();
     if (!view) {
-        showStatusMessage(i18n("Harmonic: Please open a file first."), 5000);
+        const QString message = i18n("Please open a file first.");
+        showStatusMessage(i18n("Harmonic: %1", message), 5000);
+        QMessageBox::warning(m_mainWindow->window(), i18n("Harmonic"), message);
         return;
     }
 
@@ -198,7 +197,7 @@ void HarmonicView::vibecode() {
     m_vibecodeAction->setEnabled(false);
     const QString generatingMessage = i18n("Harmonic: Generating...");
     showStatusMessage(generatingMessage);
-    postEditorMessage(m_mainWindow, generatingMessage, KTextEditor::Message::Information, 2000);
+    postEditorMessage(doc, generatingMessage, KTextEditor::Message::Information, 2000);
 
     m_vibecodeWatcher->setFuture(QtConcurrent::run([promptBytes,
                                                     contextBytes,
@@ -246,7 +245,7 @@ void HarmonicView::handleVibecodeFinished() {
     if (!generation.success) {
         const QString errorMessage = i18n("Harmonic: Generation failed");
         showStatusMessage(errorMessage, 5000);
-        postEditorMessage(m_mainWindow,
+        postEditorMessage(m_pendingDocument,
                           errorMessage,
                           KTextEditor::Message::Error,
                           7000,
@@ -259,7 +258,6 @@ void HarmonicView::handleVibecodeFinished() {
     } else if (!m_pendingDocument) {
         const QString message = i18n("Harmonic: Generation completed, but the document was closed.");
         showStatusMessage(message, 5000);
-        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Warning, 5000);
     } else {
         const int currentLine = qMax(0, qMin(m_pendingInsertLine, m_pendingDocument->lines() - 1));
         const int insertLine = currentLine + 1;
@@ -271,7 +269,7 @@ void HarmonicView::handleVibecodeFinished() {
         m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generation.text + QStringLiteral("\n"));
         const QString message = i18n("Harmonic: Generation complete");
         showStatusMessage(message, 3000);
-        postEditorMessage(m_mainWindow, message, KTextEditor::Message::Positive, 3000);
+        postEditorMessage(m_pendingDocument, message, KTextEditor::Message::Positive, 3000);
     }
 
     m_pendingDocument.clear();
