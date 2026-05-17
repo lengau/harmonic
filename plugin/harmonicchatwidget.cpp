@@ -1,12 +1,14 @@
 #include "harmonicchatwidget.h"
 #include "harmonicacp.h"
-#include "harmonicmarkdown.h"
 
 #include <KConfigGroup>
 #include <KLocalizedString>
+#include <KParts/PartLoader>
+#include <KParts/ReadOnlyPart>
 #include <KSharedConfig>
 
 #include <QAbstractTextDocumentLayout>
+#include <QAbstractScrollArea>
 #include <QAction>
 #include <QDir>
 #include <QHBoxLayout>
@@ -16,11 +18,14 @@
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QTextEdit>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtMath>
 
@@ -72,6 +77,49 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              contentStyle,
              body);
 }
+
+int markdownFenceLength(const QString &text) {
+    int longestRun = 0;
+    int currentRun = 0;
+
+    for (const QChar ch : text) {
+        if (ch == QChar(u'`')) {
+            ++currentRun;
+            longestRun = qMax(longestRun, currentRun);
+        } else {
+            currentRun = 0;
+        }
+    }
+
+    return qMax(3, longestRun + 1);
+}
+
+QString markdownCodeBlock(const QString &text) {
+    const QString fence(markdownFenceLength(text), QChar(u'`'));
+    return QStringLiteral("%1\n%2\n%1\n").arg(fence, text);
+}
+
+QString messageHeadingForRole(const QString &role) {
+    return QStringLiteral("### %1\n").arg(messageTitleForRole(role));
+}
+
+QString markdownToHtml(const QString &markdown) {
+    QTextDocument doc;
+    doc.setMarkdown(markdown);
+    const QString html = doc.toHtml();
+    static const QRegularExpression bodyPattern(QStringLiteral("<body[^>]*>(.*)</body>"),
+                                                QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch bodyMatch = bodyPattern.match(html);
+    if (bodyMatch.hasMatch()) {
+        return bodyMatch.captured(1);
+    }
+    return html;
+}
+
+QString blockquoteText(const QString &text) {
+    return text.split(QChar(u'\n')).join(QStringLiteral("\n> "));
+}
+
 } // namespace
 
 class ChatInputEdit : public QPlainTextEdit {
@@ -139,9 +187,17 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
 
-    m_chatLog = new QTextEdit(this);
-    m_chatLog->setReadOnly(true);
-    m_chatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+    const auto markdownPartResult = KParts::PartLoader::instantiatePartForMimeType<KParts::ReadOnlyPart>(
+        QStringLiteral("text/markdown"), this, this);
+    if (markdownPartResult.plugin && markdownPartResult.plugin->widget()) {
+        m_markdownPart = markdownPartResult.plugin;
+        m_chatLog = m_markdownPart->widget();
+    } else {
+        m_fallbackChatLog = new QTextEdit(this);
+        m_fallbackChatLog->setReadOnly(true);
+        m_fallbackChatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+        m_chatLog = m_fallbackChatLog;
+    }
     layout->addWidget(m_chatLog);
 
     m_typingIndicator = new QLabel(this);
@@ -455,7 +511,7 @@ void HarmonicChatWidget::finishStreaming() {
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), response, harmonicMarkdownToHtml(response));
+        appendMessage(QStringLiteral("assistant"), response);
     } else {
         refreshChatLog();
     }
@@ -611,30 +667,109 @@ void HarmonicChatWidget::onAcpProcessFinished() {
 }
 
 void HarmonicChatWidget::appendMessage(const QString &role,
-                                       const QString &text,
-                                       const QString &renderedHtml) {
-    m_conversation.append({role, text, renderedHtml});
+                                       const QString &text) {
+    m_conversation.append({role, text});
     refreshChatLog();
 }
 
-void HarmonicChatWidget::refreshChatLog() {
-    QString html;
-    for (const auto &msg : std::as_const(m_conversation)) {
-        const bool hasRenderedHtml = !msg.renderedHtml.isEmpty();
-        html += renderMessageHtml(msg.role,
-                                  hasRenderedHtml ? msg.renderedHtml : msg.content,
-                                  hasRenderedHtml);
-    }
-    if (m_isStreaming && !m_streamBuffer.isEmpty()) {
-        html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
+void HarmonicChatWidget::ensureFallbackChatLog() {
+    if (m_fallbackChatLog) {
+        return;
     }
 
-    m_chatLog->setHtml(html);
+    m_fallbackChatLog = new QTextEdit(this);
+    m_fallbackChatLog->setReadOnly(true);
+    m_fallbackChatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+
+    if (auto *mainLayout = qobject_cast<QVBoxLayout *>(layout())) {
+        mainLayout->insertWidget(0, m_fallbackChatLog);
+    } else if (layout()) {
+        layout()->addWidget(m_fallbackChatLog);
+    }
+
+    if (m_chatLog && m_chatLog != m_fallbackChatLog) {
+        m_chatLog->hide();
+    }
+    m_chatLog = m_fallbackChatLog;
+}
+
+void HarmonicChatWidget::refreshChatLog() {
+    const bool usingFallbackView = m_fallbackChatLog && m_chatLog == m_fallbackChatLog;
+    bool renderedInFallback = usingFallbackView;
+
+    if (!renderedInFallback && m_markdownPart) {
+        QString markdown;
+        for (const auto &msg : std::as_const(m_conversation)) {
+            markdown += messageHeadingForRole(msg.role);
+            if (msg.role == QStringLiteral("assistant")) {
+                markdown += msg.content + QStringLiteral("\n\n");
+            } else if (msg.role == QStringLiteral("user")) {
+                markdown += markdownCodeBlock(msg.content) + QStringLiteral("\n");
+            } else if (msg.role == QStringLiteral("error")) {
+                markdown += QStringLiteral("> **%1**\n>\n> %2\n\n")
+                                .arg(messageTitleForRole(msg.role),
+                                     blockquoteText(msg.content));
+            } else if (msg.role == QStringLiteral("status")) {
+                markdown += QStringLiteral("**%1:** %2\n\n")
+                                .arg(messageTitleForRole(msg.role), msg.content);
+            } else {
+                markdown += msg.content + QStringLiteral("\n\n");
+            }
+        }
+        if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+            markdown += messageHeadingForRole(QStringLiteral("assistant")) + m_streamBuffer + QStringLiteral("\n");
+        }
+        m_markdownPart->closeUrl();
+        if (m_markdownPart->openStream(QStringLiteral("text/markdown"), QUrl(QStringLiteral("memory:harmonic-chat.md")))) {
+            m_markdownPart->writeStream(markdown.toUtf8());
+            m_markdownPart->closeStream();
+        } else {
+            renderedInFallback = true;
+        }
+    } else {
+        renderedInFallback = true;
+    }
+
+    if (renderedInFallback) {
+        ensureFallbackChatLog();
+    }
+
+    if (renderedInFallback && m_fallbackChatLog) {
+        QString html;
+        for (const auto &msg : std::as_const(m_conversation)) {
+            if (msg.role == QStringLiteral("assistant")) {
+                html += renderMessageHtml(msg.role, markdownToHtml(msg.content), true);
+            } else {
+                html += renderMessageHtml(msg.role, msg.content);
+            }
+        }
+        if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+            html += renderMessageHtml(QStringLiteral("assistant"), markdownToHtml(m_streamBuffer), true);
+        }
+
+        m_fallbackChatLog->setHtml(html);
+    }
+
     scrollChatToBottom();
 }
 
 void HarmonicChatWidget::scrollChatToBottom() {
-    if (auto *sb = m_chatLog->verticalScrollBar()) {
+    QScrollBar *sb = nullptr;
+    if (auto *textEdit = qobject_cast<QTextEdit *>(m_chatLog)) {
+        sb = textEdit->verticalScrollBar();
+    } else if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(m_chatLog)) {
+        sb = scrollArea->verticalScrollBar();
+    } else if (m_chatLog) {
+        const QList<QScrollBar *> scrollBars = m_chatLog->findChildren<QScrollBar *>();
+        for (QScrollBar *candidate : scrollBars) {
+            if (candidate && candidate->orientation() == Qt::Vertical) {
+                sb = candidate;
+                break;
+            }
+        }
+    }
+
+    if (sb) {
         sb->setValue(sb->maximum());
     }
 }

@@ -13,7 +13,7 @@ include(KDECMakeSettings)
 include(KDECompilerSettings)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
-find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
+find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config Parts)
 include(CTest)
 
 # Build the Rust core library
@@ -38,7 +38,6 @@ add_library(harmonicplugin MODULE
     harmonicconfigpage.cpp
     harmonicchatwidget.cpp
     harmonicacp.cpp
-    harmonicmarkdown.cpp
 )
 
 add_dependencies(harmonicplugin harmonic_rust_lib)
@@ -62,6 +61,7 @@ target_link_libraries(harmonicplugin
     KF6::XmlGui
     KF6::ConfigCore
     KF6::ConfigGui
+    KF6::Parts
     ${HARMONIC_LIB}
 )
 
@@ -88,4 +88,5 @@ if(BUILD_TESTING)
         BUILD_RPATH "${HARMONIC_LIB_DIR}"
     )
     add_test(NAME test_harmonic_ffi COMMAND test_harmonic_ffi)
+
 endif()

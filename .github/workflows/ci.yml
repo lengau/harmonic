@@ -142,6 +142,7 @@ jobs:
               clang-format \
               libkf6config-dev \
               libkf6i18n-dev \
+              libkf6parts-dev \
               libkf6texteditor-dev \
               libkf6xmlgui-dev \
               libkf6coreaddons-dev \
