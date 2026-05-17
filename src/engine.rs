@@ -3,7 +3,7 @@
 //! Calls a configurable AI coding tool in non-interactive mode.
 
 use std::io;
-use std::process::Command;
+use std::process::{Command, Output};
 
 use serde::Deserialize;
 
@@ -53,9 +53,23 @@ impl Backend {
             "copilot" => Ok(Self::Copilot),
             "custom" => Ok(Self::Custom),
             _ => Err(EngineError::invalid_backend(format!(
-                "Unknown backend: {name}. Expected one of: copilot, opencode, claude-code, custom."
+                "Unknown backend: {name}. Expected one of: {}.",
+                supported_backend_names().join(", ")
             ))),
         }
+    }
+}
+
+fn supported_backend_names() -> [&'static str; 4] {
+    ["copilot", "opencode", "claude-code", "custom"]
+}
+
+fn process_failure_message(command: &str, output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        format!("{command} exited with status {}", output.status)
+    } else {
+        stderr
     }
 }
 
@@ -123,8 +137,9 @@ fn run_opencode(
         .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::process_failed(stderr.to_string()));
+        return Err(EngineError::process_failed(process_failure_message(
+            cmd, &output,
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -167,8 +182,9 @@ fn run_claude_code(
         .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::process_failed(stderr.to_string()));
+        return Err(EngineError::process_failed(process_failure_message(
+            cmd, &output,
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -188,8 +204,9 @@ fn run_copilot(command: &str, prompt: &str) -> Result<String, EngineError> {
         .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::process_failed(stderr.to_string()));
+        return Err(EngineError::process_failed(process_failure_message(
+            cmd, &output,
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -209,8 +226,9 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
         .map_err(|e| EngineError::spawn_failed(e.to_string()))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::process_failed(stderr.to_string()));
+        return Err(EngineError::process_failed(process_failure_message(
+            command, &output,
+        )));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

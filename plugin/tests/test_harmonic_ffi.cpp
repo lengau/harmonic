@@ -56,5 +56,5 @@ void HarmonicFfiTest::legacyApiReturnsErrorPrefix() {
     harmonic_free_string(result);
 }
 
-QTEST_MAIN(HarmonicFfiTest)
+QTEST_GUILESS_MAIN(HarmonicFfiTest)
 #include "test_harmonic_ffi.moc"

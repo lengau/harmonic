@@ -30,7 +30,7 @@ fn into_c_string_ptr(value: &str) -> *mut c_char {
     CString::new(sanitized).unwrap_or_default().into_raw()
 }
 
-/// Helper to convert a C string pointer to an Option<&str>.
+/// Helper to convert a C string pointer to an owned Rust String.
 unsafe fn cstr_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         None
@@ -108,7 +108,7 @@ pub unsafe extern "C" fn harmonic_generate_result(
         Err(e) => HarmonicResult {
             status: status_from_engine_error_kind(e.kind()),
             output: ptr::null_mut(),
-            error: into_c_string_ptr(e.message()),
+            error: into_c_string_ptr(&e.to_string()),
         },
     }
 }
@@ -140,9 +140,7 @@ pub unsafe extern "C" fn harmonic_generate(
     };
 
     if result.status == HARMONIC_STATUS_OK {
-        if !result.error.is_null() {
-            unsafe { harmonic_free_string(result.error) };
-        }
+        unsafe { harmonic_free_string(result.error) };
         return result.output;
     }
 

@@ -17,7 +17,7 @@ typedef enum HarmonicStatus {
 } HarmonicStatus;
 
 typedef struct HarmonicResult {
-    int status;
+    HarmonicStatus status;
     char *output;
     char *error;
 } HarmonicResult;
@@ -35,7 +35,7 @@ void harmonic_free_result(HarmonicResult result);
 /* Generate code from a natural language prompt using the configured backend.
  * prompt: the natural language description (required, non-null).
  * context: surrounding code for better results (may be NULL).
- * backend: "copilot", "opencode", "claude-code", or "custom" (may be NULL for default).
+ * backend: configured backend identifier (may be NULL for default).
  * command: path to the backend command (may be NULL for default).
  * model: model name to use (may be NULL).
  * api_key: API key override (may be NULL to use environment).

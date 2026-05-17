@@ -193,7 +193,7 @@ void HarmonicView::vibecode() {
             if (result.error) {
                 vibecodeResult.text = QString::fromUtf8(result.error);
             } else {
-                vibecodeResult.text = QStringLiteral("Harmonic generation failed.");
+                vibecodeResult.text = i18n("Harmonic generation failed.");
             }
         }
         harmonic_free_result(result);
