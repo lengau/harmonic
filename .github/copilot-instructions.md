@@ -66,7 +66,7 @@ harmonic/
 ```text
 Kate action/UI (C++/Qt plugin)
   ├─ Vibecode flow → FFI (`harmonic_generate`) → Rust engine
-  │                   └─ invokes configured CLI backend (copilot/opencode/claude/custom)
+  │                   └─ invokes configured CLI backend (copilot/opencode/claude-code/custom)
   └─ Chat flow → process/ACP streaming in plugin UI
 ```
 
