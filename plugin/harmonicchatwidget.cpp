@@ -3,6 +3,8 @@
 
 #include <KConfigGroup>
 #include <KLocalizedString>
+#include <KParts/PartLoader>
+#include <KParts/ReadOnlyPart>
 #include <KSharedConfig>
 
 #include <QAbstractTextDocumentLayout>
@@ -18,10 +20,9 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QTextEdit>
-#include <QTextDocument>
-#include <QTextDocumentFragment>
 #include <QTimer>
 #include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtMath>
 
@@ -74,12 +75,23 @@ QString renderMessageHtml(const QString &role, const QString &text, bool textIsH
              body);
 }
 
-QString renderMarkdownToHtml(const QString &markdown) {
-    return QTextDocumentFragment::fromMarkdown(
-               markdown,
-               QTextDocument::MarkdownDialectGitHub)
-        .toHtml();
+QString markdownCodeBlock(const QString &text) {
+    return QStringLiteral("```\n%1\n```\n").arg(text);
 }
+
+QString messageHeadingForRole(const QString &role) {
+    if (role == QStringLiteral("user")) {
+        return QStringLiteral("### You\n");
+    }
+    if (role == QStringLiteral("error")) {
+        return QStringLiteral("### Error\n");
+    }
+    if (role == QStringLiteral("status")) {
+        return QStringLiteral("### Status\n");
+    }
+    return QStringLiteral("### Harmonic\n");
+}
+
 } // namespace
 
 class ChatInputEdit : public QPlainTextEdit {
@@ -147,9 +159,17 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
 
-    m_chatLog = new QTextEdit(this);
-    m_chatLog->setReadOnly(true);
-    m_chatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+    const auto markdownPartResult = KParts::PartLoader::instantiatePartForMimeType<KParts::ReadOnlyPart>(
+        QStringLiteral("text/markdown"), this, this);
+    if (markdownPartResult.plugin && markdownPartResult.plugin->widget()) {
+        m_markdownPart = markdownPartResult.plugin;
+        m_chatLog = m_markdownPart->widget();
+    } else {
+        m_fallbackChatLog = new QTextEdit(this);
+        m_fallbackChatLog->setReadOnly(true);
+        m_fallbackChatLog->setPlaceholderText(i18n("Chat with your AI coding assistant..."));
+        m_chatLog = m_fallbackChatLog;
+    }
     layout->addWidget(m_chatLog);
 
     m_typingIndicator = new QLabel(this);
@@ -463,7 +483,7 @@ void HarmonicChatWidget::finishStreaming() {
 
     const QString response = m_streamBuffer.trimmed();
     if (!response.isEmpty()) {
-        appendMessage(QStringLiteral("assistant"), response, renderMarkdownToHtml(response));
+        appendMessage(QStringLiteral("assistant"), response);
     } else {
         refreshChatLog();
     }
@@ -619,30 +639,52 @@ void HarmonicChatWidget::onAcpProcessFinished() {
 }
 
 void HarmonicChatWidget::appendMessage(const QString &role,
-                                       const QString &text,
-                                       const QString &renderedHtml) {
-    m_conversation.append({role, text, renderedHtml});
+                                       const QString &text) {
+    m_conversation.append({role, text});
     refreshChatLog();
 }
 
 void HarmonicChatWidget::refreshChatLog() {
+    if (m_markdownPart) {
+        QString markdown;
+        for (const auto &msg : std::as_const(m_conversation)) {
+            markdown += messageHeadingForRole(msg.role);
+            if (msg.role == QStringLiteral("assistant")) {
+                markdown += msg.content + QStringLiteral("\n\n");
+            } else {
+                markdown += markdownCodeBlock(msg.content) + QStringLiteral("\n");
+            }
+        }
+        if (m_isStreaming && !m_streamBuffer.isEmpty()) {
+            markdown += QStringLiteral("### Harmonic\n") + m_streamBuffer + QStringLiteral("\n");
+        }
+        m_markdownPart->closeUrl();
+        if (m_markdownPart->openStream(QStringLiteral("text/markdown"), QUrl(QStringLiteral("memory:harmonic-chat.md")))) {
+            m_markdownPart->writeStream(markdown.toUtf8());
+            m_markdownPart->closeStream();
+        }
+        return;
+    }
+
+    if (!m_fallbackChatLog) {
+        return;
+    }
+
     QString html;
     for (const auto &msg : std::as_const(m_conversation)) {
-        const bool hasRenderedHtml = !msg.renderedHtml.isEmpty();
-        html += renderMessageHtml(msg.role,
-                                  hasRenderedHtml ? msg.renderedHtml : msg.content,
-                                  hasRenderedHtml);
+        html += renderMessageHtml(msg.role, msg.content);
     }
     if (m_isStreaming && !m_streamBuffer.isEmpty()) {
         html += renderMessageHtml(QStringLiteral("assistant"), m_streamBuffer);
     }
 
-    m_chatLog->setHtml(html);
+    m_fallbackChatLog->setHtml(html);
     scrollChatToBottom();
 }
 
 void HarmonicChatWidget::scrollChatToBottom() {
-    if (auto *sb = m_chatLog->verticalScrollBar()) {
+    if (m_fallbackChatLog) {
+        auto *sb = m_fallbackChatLog->verticalScrollBar();
         sb->setValue(sb->maximum());
     }
 }

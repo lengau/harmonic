@@ -10,6 +10,9 @@
 
 class ChatInputEdit;
 class HarmonicAcp;
+namespace KParts {
+class ReadOnlyPart;
+}
 class QLabel;
 class QPushButton;
 class QTextEdit;
@@ -52,9 +55,7 @@ class HarmonicChatWidget : public QWidget {
         Acp
     };
 
-    void appendMessage(const QString &role,
-                       const QString &text,
-                       const QString &renderedHtml = QString());
+    void appendMessage(const QString &role, const QString &text);
     void refreshChatLog();
     void scrollChatToBottom();
     void startStreaming(StreamBackend backend);
@@ -75,7 +76,8 @@ class HarmonicChatWidget : public QWidget {
     void resetAcpState();
 
     // UI widgets
-    QTextEdit *m_chatLog = nullptr;
+    QWidget *m_chatLog = nullptr;
+    QTextEdit *m_fallbackChatLog = nullptr;
     ChatInputEdit *m_input = nullptr;
     QPushButton *m_sendButton = nullptr;
     QLabel *m_typingIndicator = nullptr;
@@ -87,6 +89,7 @@ class HarmonicChatWidget : public QWidget {
     // Backend processes
     QProcess *m_process = nullptr;
     HarmonicAcp *m_acp = nullptr;
+    KParts::ReadOnlyPart *m_markdownPart = nullptr;
 
     // Prompt/session state
     QString m_context;
@@ -111,7 +114,6 @@ class HarmonicChatWidget : public QWidget {
     struct Message {
         QString role;
         QString content;
-        QString renderedHtml;
     };
     QList<Message> m_conversation;
 };
