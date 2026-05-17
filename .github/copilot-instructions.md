@@ -122,4 +122,4 @@ i18n("Harmonic");
 i18nc("@action:button", "Send");
 ```
 
-Do not concatenate translated fragments; use argument substitution.
+Do not concatenate translated fragments; use argument substitution (e.g., i18n("Processed %1 files", count)).
