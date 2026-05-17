@@ -254,7 +254,7 @@ HarmonicChatWidget::HarmonicChatWidget(QWidget *parent)
         }
         sendMessage();
     });
-    connect(m_input, &ChatInputEdit::submitPressed, this, &HarmonicChatWidget::sendMessage);
+    connect(m_input, &ChatInputEdit::submitPressed, this, [this]() { sendMessage(); });
     connect(m_input, &ChatInputEdit::historyPreviousRequested, this, &HarmonicChatWidget::showPreviousHistoryMessage);
     connect(m_input, &ChatInputEdit::historyNextRequested, this, &HarmonicChatWidget::showNextHistoryMessage);
     connect(cancelShortcut, &QShortcut::activated, this, &HarmonicChatWidget::cancelCurrentGeneration);
@@ -349,8 +349,9 @@ QString HarmonicChatWidget::buildAcpPrompt(const QString &message) const {
         .arg(m_context, message);
 }
 
-void HarmonicChatWidget::sendMessage() {
-    const QString message = m_input->toPlainText().trimmed();
+void HarmonicChatWidget::sendMessage(const QString &messageOverride) {
+    const bool isFromQueue = !messageOverride.isEmpty();
+    const QString message = isFromQueue ? messageOverride : m_input->toPlainText().trimmed();
     if (message.isEmpty()) {
         return;
     }
@@ -363,13 +364,17 @@ void HarmonicChatWidget::sendMessage() {
 
     if (m_isStreaming || (m_process && m_process->state() != QProcess::NotRunning) || acpInitializing) {
         m_pendingMessages.append(message);
-        m_input->clear();
+        if (!isFromQueue) {
+            m_input->clear();
+        }
         return;
     }
 
     m_inputHistory.append(message);
     m_historyPosition = m_inputHistory.size();
-    m_input->clear();
+    if (!isFromQueue) {
+        m_input->clear();
+    }
 
     appendMessage(QStringLiteral("user"), message);
 
@@ -926,8 +931,7 @@ void HarmonicChatWidget::processQueuedMessage() {
     }
 
     const QString queued = m_pendingMessages.takeFirst();
-    m_input->setPlainText(queued);
-    sendMessage();
+    sendMessage(queued);
 }
 
 void HarmonicChatWidget::resetAcpState() {

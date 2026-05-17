@@ -30,7 +30,7 @@ class HarmonicChatWidget : public QWidget {
     void setWorkingDirectory(const QString &workingDirectory);
 
   private Q_SLOTS:
-    void sendMessage();
+    void sendMessage(const QString &message = QString());
     void cancelCurrentGeneration();
     void onReadyReadStdout();
     void onReadyReadStderr();
