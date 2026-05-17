@@ -42,7 +42,7 @@ void postEditorMessage(KTextEditor::Document *document,
     if (!actionText.isEmpty() && actionHandler) {
         auto *action = new QAction(actionText, message);
         QObject::connect(action, &QAction::triggered, message, actionHandler);
-        message->addAction(action, false);
+        message->addAction(action);
     }
 
     if (!document->postMessage(message)) {
