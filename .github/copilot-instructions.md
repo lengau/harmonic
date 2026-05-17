@@ -72,6 +72,14 @@ Kate action/UI (C++/Qt plugin)
 
 The Rust core is the execution layer for prompt-to-code generation.
 The plugin manages user interaction, context extraction, and insertion into documents.
+Treat Vibecode as the file-edit path (document modifications); treat Chat as informational/streaming UI unless a task explicitly requires otherwise.
+
+## FFI contract and error protocol
+
+- `include/harmonic.h` and `src/lib.rs` define the authoritative Rust↔C++ boundary.
+- `harmonic_generate(...)` should return a descriptive error string on backend/engine failures, not a null pointer or silent fallback.
+- Any `char *` returned from Harmonic FFI must be released by calling `harmonic_free_string(...)` exactly once.
+- Preserve ownership and lifetime guarantees when changing FFI signatures or call sites.
 
 ## Build, lint, and test
 
@@ -105,6 +113,7 @@ For C++ formatting checks, follow `.clang-format` and CI logic (changed C/C++ fi
 4. Runs Rust fmt/clippy, C++ format checks, Rust tests, and plugin build.
 
 If local behavior differs from CI, treat CI workflow behavior as authoritative.
+CI currently uses Ubuntu 26.04 in LXD; local agent environments may not have `lxc`, so run the repo-native Cargo/CMake commands directly unless containerized CI reproduction is explicitly required.
 
 ## Backend behavior notes
 
