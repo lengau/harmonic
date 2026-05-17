@@ -412,7 +412,7 @@ void HarmonicChatWidget::sendMessage() {
 
     const QString fullPrompt = buildConversationPrompt(message);
 
-    const QStringList commandParts = KShell::splitArgs(command);
+    const QStringList commandParts = KShell::splitArgs(command, KShell::TildeExpand);
     if (commandParts.isEmpty()) {
         appendMessage(QStringLiteral("error"), i18n("Invalid backend command configured."));
         return;
