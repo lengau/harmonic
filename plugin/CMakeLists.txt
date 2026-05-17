@@ -14,6 +14,7 @@ include(KDECompilerSettings)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent)
 find_package(KF6 REQUIRED COMPONENTS TextEditor I18n XmlGui Config)
+include(CTest)
 
 # Build the Rust core library
 find_program(CARGO cargo REQUIRED)
@@ -67,3 +68,24 @@ target_link_libraries(harmonicplugin
 install(TARGETS harmonicplugin DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/ktexteditor)
 install(FILES harmonicplugin.json DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/ktexteditor)
 install(FILES harmonicplugin.rc DESTINATION ${KDE_INSTALL_KXMLGUIDIR}/harmonicplugin)
+
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+
+    add_executable(test_harmonic_ffi
+        tests/test_harmonic_ffi.cpp
+    )
+    add_dependencies(test_harmonic_ffi harmonic_rust_lib)
+    target_include_directories(test_harmonic_ffi PRIVATE
+        ${CMAKE_SOURCE_DIR}/../include
+    )
+    target_link_libraries(test_harmonic_ffi
+        Qt6::Core
+        Qt6::Test
+        ${HARMONIC_LIB}
+    )
+    set_target_properties(test_harmonic_ffi PROPERTIES
+        BUILD_RPATH "${HARMONIC_LIB_DIR}"
+    )
+    add_test(NAME test_harmonic_ffi COMMAND test_harmonic_ffi)
+endif()

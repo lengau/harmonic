@@ -37,12 +37,35 @@ impl Default for EngineConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    Opencode,
+    ClaudeCode,
+    Copilot,
+    Custom,
+}
+
+impl Backend {
+    fn from_name(name: &str) -> Result<Self, EngineError> {
+        match name {
+            "opencode" => Ok(Self::Opencode),
+            "claude-code" => Ok(Self::ClaudeCode),
+            "copilot" => Ok(Self::Copilot),
+            "custom" => Ok(Self::Custom),
+            _ => Err(EngineError::invalid_backend(format!(
+                "Unknown backend: {name}. Expected one of: copilot, opencode, claude-code, custom."
+            ))),
+        }
+    }
+}
+
 /// Generate code using the configured AI backend.
 pub fn generate(
     prompt: &str,
     context: Option<&str>,
     config: &EngineConfig,
 ) -> Result<String, EngineError> {
+    let backend = Backend::from_name(&config.backend)?;
     let context_for_prompt = if config.send_context { context } else { None };
 
     let full_prompt = match context_for_prompt {
@@ -52,27 +75,21 @@ pub fn generate(
         None => format!("{prompt}\n\nRespond with ONLY the generated code, no explanation."),
     };
 
-    match config.backend.as_str() {
-        "opencode" => run_opencode(
+    match backend {
+        Backend::Opencode => run_opencode(
             &config.command,
             &full_prompt,
             &config.model,
             &config.api_key,
         ),
-        "claude-code" => run_claude_code(
+        Backend::ClaudeCode => run_claude_code(
             &config.command,
             &full_prompt,
             &config.model,
             &config.api_key,
         ),
-        "copilot" => run_copilot(&config.command, &full_prompt),
-        "custom" => run_custom(&config.command, &full_prompt),
-        _ => run_opencode(
-            &config.command,
-            &full_prompt,
-            &config.model,
-            &config.api_key,
-        ),
+        Backend::Copilot => run_copilot(&config.command, &full_prompt),
+        Backend::Custom => run_custom(&config.command, &full_prompt),
     }
 }
 
@@ -103,11 +120,11 @@ fn run_opencode(
 
     let output = proc
         .output()
-        .map_err(|e| EngineError::SpawnFailed(format!("{cmd}: {e}")))?;
+        .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::ProcessFailed(stderr.to_string()));
+        return Err(EngineError::process_failed(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -147,11 +164,11 @@ fn run_claude_code(
 
     let output = proc
         .output()
-        .map_err(|e| EngineError::SpawnFailed(format!("{cmd}: {e}")))?;
+        .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::ProcessFailed(stderr.to_string()));
+        return Err(EngineError::process_failed(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -168,11 +185,11 @@ fn run_copilot(command: &str, prompt: &str) -> Result<String, EngineError> {
     let output = Command::new(cmd)
         .args(["-p", prompt, "--output-format", "text", "--silent"])
         .output()
-        .map_err(|e| EngineError::SpawnFailed(format!("{cmd}: {e}")))?;
+        .map_err(|e| EngineError::spawn_failed(format!("{cmd}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::ProcessFailed(stderr.to_string()));
+        return Err(EngineError::process_failed(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -181,7 +198,7 @@ fn run_copilot(command: &str, prompt: &str) -> Result<String, EngineError> {
 
 fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
     if command.is_empty() {
-        return Err(EngineError::SpawnFailed(
+        return Err(EngineError::invalid_config(
             "No custom command configured".to_string(),
         ));
     }
@@ -189,11 +206,11 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
     let output = Command::new("sh")
         .args(["-c", &format!("{command} {}", shell_escape(prompt))])
         .output()
-        .map_err(|e| EngineError::SpawnFailed(e.to_string()))?;
+        .map_err(|e| EngineError::spawn_failed(e.to_string()))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::ProcessFailed(stderr.to_string()));
+        return Err(EngineError::process_failed(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -223,17 +240,65 @@ fn strip_code_fences(s: &str) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineErrorKind {
+    InvalidBackend,
+    InvalidConfig,
+    SpawnFailed,
+    ProcessFailed,
+}
+
 #[derive(Debug)]
-pub enum EngineError {
-    SpawnFailed(String),
-    ProcessFailed(String),
+pub struct EngineError {
+    kind: EngineErrorKind,
+    message: String,
+}
+
+impl EngineError {
+    fn invalid_backend(message: String) -> Self {
+        Self {
+            kind: EngineErrorKind::InvalidBackend,
+            message,
+        }
+    }
+
+    fn invalid_config(message: String) -> Self {
+        Self {
+            kind: EngineErrorKind::InvalidConfig,
+            message,
+        }
+    }
+
+    fn spawn_failed(message: String) -> Self {
+        Self {
+            kind: EngineErrorKind::SpawnFailed,
+            message,
+        }
+    }
+
+    fn process_failed(message: String) -> Self {
+        Self {
+            kind: EngineErrorKind::ProcessFailed,
+            message,
+        }
+    }
+
+    pub fn kind(&self) -> EngineErrorKind {
+        self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl std::fmt::Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SpawnFailed(e) => write!(f, "Failed to launch backend: {e}"),
-            Self::ProcessFailed(e) => write!(f, "Backend error: {e}"),
+        match self.kind {
+            EngineErrorKind::InvalidBackend => write!(f, "Invalid backend: {}", self.message),
+            EngineErrorKind::InvalidConfig => write!(f, "Invalid configuration: {}", self.message),
+            EngineErrorKind::SpawnFailed => write!(f, "Failed to launch backend: {}", self.message),
+            EngineErrorKind::ProcessFailed => write!(f, "Backend error: {}", self.message),
         }
     }
 }
@@ -270,5 +335,31 @@ mod tests {
     fn test_shell_escape() {
         assert_eq!(shell_escape("hello world"), "'hello world'");
         assert_eq!(shell_escape("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_generate_rejects_unknown_backend() {
+        let config = EngineConfig {
+            backend: "unknown".to_string(),
+            command: String::new(),
+            model: String::new(),
+            api_key: String::new(),
+            send_context: true,
+        };
+        let error = generate("hello", None, &config).unwrap_err();
+        assert_eq!(error.kind(), EngineErrorKind::InvalidBackend);
+    }
+
+    #[test]
+    fn test_generate_custom_requires_command() {
+        let config = EngineConfig {
+            backend: "custom".to_string(),
+            command: String::new(),
+            model: String::new(),
+            api_key: String::new(),
+            send_context: true,
+        };
+        let error = generate("hello", None, &config).unwrap_err();
+        assert_eq!(error.kind(), EngineErrorKind::InvalidConfig);
     }
 }

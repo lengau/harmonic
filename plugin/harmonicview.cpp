@@ -31,8 +31,8 @@ HarmonicView::HarmonicView(HarmonicPlugin *plugin, KTextEditor::MainWindow *main
     actionCollection()->setDefaultShortcut(m_vibecodeAction, QKeySequence(QStringLiteral("Ctrl+Shift+V")));
     connect(m_vibecodeAction, &QAction::triggered, this, &HarmonicView::vibecode);
 
-    m_vibecodeWatcher = new QFutureWatcher<QString>(this);
-    connect(m_vibecodeWatcher, &QFutureWatcher<QString>::finished, this, &HarmonicView::handleVibecodeFinished);
+    m_vibecodeWatcher = new QFutureWatcher<VibecodeResult>(this);
+    connect(m_vibecodeWatcher, &QFutureWatcher<VibecodeResult>::finished, this, &HarmonicView::handleVibecodeFinished);
 
     mainWindow->guiFactory()->addClient(this);
 
@@ -169,11 +169,11 @@ void HarmonicView::vibecode() {
                                                     commandBytes,
                                                     modelBytes,
                                                     apiKeyBytes,
-                                                    sendContext]() -> QString {
-        // QByteArrays captured by value — safe because harmonic_generate() is synchronous
+                                                    sendContext]() -> VibecodeResult {
+        // QByteArrays captured by value — safe because harmonic_generate_result() is synchronous
         // and completes before the lambda returns, keeping the buffers alive.
         const char *context = contextBytes.isEmpty() ? nullptr : contextBytes.constData();
-        char *result = harmonic_generate(
+        HarmonicResult result = harmonic_generate_result(
             promptBytes.constData(),
             context,
             backendBytes.constData(),
@@ -181,25 +181,35 @@ void HarmonicView::vibecode() {
             modelBytes.isEmpty() ? nullptr : modelBytes.constData(),
             apiKeyBytes.isEmpty() ? nullptr : apiKeyBytes.constData(),
             sendContext);
-        if (!result) {
-            return QStringLiteral("// Error: Harmonic generation failed.");
-        }
 
-        const QString generated = QString::fromUtf8(result);
-        harmonic_free_string(result);
-        return generated;
+        VibecodeResult vibecodeResult;
+        if (result.status == HARMONIC_STATUS_OK) {
+            vibecodeResult.success = true;
+            if (result.output) {
+                vibecodeResult.text = QString::fromUtf8(result.output);
+            }
+        } else {
+            vibecodeResult.success = false;
+            if (result.error) {
+                vibecodeResult.text = QString::fromUtf8(result.error);
+            } else {
+                vibecodeResult.text = QStringLiteral("Harmonic generation failed.");
+            }
+        }
+        harmonic_free_result(result);
+        return vibecodeResult;
     }));
 }
 
 void HarmonicView::handleVibecodeFinished() {
     m_vibecodeAction->setEnabled(true);
 
-    const QString generated = m_vibecodeWatcher->result();
+    const VibecodeResult generation = m_vibecodeWatcher->result();
     QWidget *parentWidget = m_mainWindow->window();
 
-    if (generated.startsWith(QStringLiteral("// Error:"))) {
+    if (!generation.success) {
         showStatusMessage(i18n("Harmonic: Generation failed"), 5000);
-        QMessageBox::warning(parentWidget, i18n("Harmonic"), generated);
+        QMessageBox::warning(parentWidget, i18n("Harmonic"), generation.text);
     } else if (!m_pendingDocument) {
         showStatusMessage(i18n("Harmonic: Generation completed, but the document was closed."), 5000);
     } else {
@@ -210,7 +220,7 @@ void HarmonicView::handleVibecodeFinished() {
                 KTextEditor::Cursor(currentLine, m_pendingDocument->lineLength(currentLine)),
                 QStringLiteral("\n"));
         }
-        m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generated + QStringLiteral("\n"));
+        m_pendingDocument->insertText(KTextEditor::Cursor(insertLine, 0), generation.text + QStringLiteral("\n"));
         showStatusMessage(i18n("Harmonic: Generation complete"), 3000);
     }
 
