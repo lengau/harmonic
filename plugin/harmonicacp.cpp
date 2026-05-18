@@ -1,14 +1,13 @@
 #include "harmonicacp.h"
 
-#include <KLocalizedString>
-#include <KShell>
-
-#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QPointer>
 #include <QTimer>
 
-HarmonicAcp::HarmonicAcp(QObject *parent) : QObject(parent) {}
+HarmonicAcp::HarmonicAcp(QObject *parent)
+    : QObject(parent) {
+}
 
 HarmonicAcp::~HarmonicAcp() {
     stop();
@@ -27,23 +26,11 @@ void HarmonicAcp::start(const QString &command, const QString &workingDir) {
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(workingDir);
     connect(m_process, &QProcess::started, this, &HarmonicAcp::onProcessStarted);
-    connect(m_process, &QProcess::readyReadStandardOutput, this,
-            &HarmonicAcp::onReadyRead);
-    connect(m_process, &QProcess::finished, this,
-            &HarmonicAcp::onProcessFinished);
-    connect(m_process, &QProcess::errorOccurred, this,
-            &HarmonicAcp::onProcessError);
+    connect(m_process, &QProcess::readyReadStandardOutput, this, &HarmonicAcp::onReadyRead);
+    connect(m_process, &QProcess::finished, this, &HarmonicAcp::onProcessFinished);
+    connect(m_process, &QProcess::errorOccurred, this, &HarmonicAcp::onProcessError);
 
-    const QStringList commandParts =
-        KShell::splitArgs(command, KShell::TildeExpand);
-    if (commandParts.isEmpty()) {
-        Q_EMIT errorOccurred(i18n("Invalid ACP command configured"));
-        return;
-    }
-
-    QStringList args = commandParts.mid(1);
-    args << QStringLiteral("--acp");
-    m_process->start(commandParts.first(), args);
+    m_process->start(command, {QStringLiteral("--acp")});
 }
 
 void HarmonicAcp::stop() {
@@ -65,13 +52,12 @@ void HarmonicAcp::stop() {
     }
 
     connect(process, &QProcess::finished, process, &QObject::deleteLater);
-    connect(process, &QProcess::finished, this,
-            [this](int, QProcess::ExitStatus) {
-                if (m_process) {
-                    return;
-                }
-                Q_EMIT processFinished();
-            });
+    connect(process, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+        if (m_process) {
+            return;
+        }
+        Q_EMIT processFinished();
+    });
 
     process->closeWriteChannel();
     QPointer<QProcess> processGuard = process;
@@ -121,8 +107,7 @@ void HarmonicAcp::cancelPrompt() {
     sendNotification(QStringLiteral("session/cancel"), params);
 }
 
-void HarmonicAcp::respondToPermission(const QJsonValue &requestId,
-                                      const QString &optionId) {
+void HarmonicAcp::respondToPermission(const QJsonValue &requestId, const QString &optionId) {
     QJsonObject result;
     QJsonObject outcome;
     outcome[QStringLiteral("outcome")] = QStringLiteral("selected");
@@ -139,8 +124,7 @@ void HarmonicAcp::denyPermission(const QJsonValue &requestId) {
     sendResponse(requestId, result);
 }
 
-void HarmonicAcp::sendRequest(const QString &method,
-                              const QJsonObject &params) {
+void HarmonicAcp::sendRequest(const QString &method, const QJsonObject &params) {
     if (!m_process || m_process->state() != QProcess::Running)
         return;
 
@@ -154,8 +138,7 @@ void HarmonicAcp::sendRequest(const QString &method,
     m_process->write(data);
 }
 
-void HarmonicAcp::sendNotification(const QString &method,
-                                   const QJsonObject &params) {
+void HarmonicAcp::sendNotification(const QString &method, const QJsonObject &params) {
     if (!m_process || m_process->state() != QProcess::Running)
         return;
 
@@ -168,8 +151,7 @@ void HarmonicAcp::sendNotification(const QString &method,
     m_process->write(data);
 }
 
-void HarmonicAcp::sendResponse(const QJsonValue &id,
-                               const QJsonObject &result) {
+void HarmonicAcp::sendResponse(const QJsonValue &id, const QJsonObject &result) {
     if (!m_process || m_process->state() != QProcess::Running || id.isUndefined())
         return;
 
@@ -228,8 +210,7 @@ void HarmonicAcp::onReadyRead() {
 
 void HarmonicAcp::processMessage(const QJsonObject &msg) {
     // Check if it's a response (has "id" and "result" or "error")
-    if (msg.contains(QStringLiteral("result")) &&
-        msg.contains(QStringLiteral("id"))) {
+    if (msg.contains(QStringLiteral("result")) && msg.contains(QStringLiteral("id"))) {
         QJsonObject result = msg[QStringLiteral("result")].toObject();
 
         // Check if it's an initialize response
@@ -254,8 +235,7 @@ void HarmonicAcp::processMessage(const QJsonObject &msg) {
     }
 
     // Check if it's an error response
-    if (msg.contains(QStringLiteral("error")) &&
-        msg.contains(QStringLiteral("id"))) {
+    if (msg.contains(QStringLiteral("error")) && msg.contains(QStringLiteral("id"))) {
         QJsonObject error = msg[QStringLiteral("error")].toObject();
         Q_EMIT errorOccurred(error[QStringLiteral("message")].toString());
         return;
@@ -332,11 +312,9 @@ void HarmonicAcp::onProcessError(QProcess::ProcessError error) {
         m_nextId = 1;
         m_readBuffer.clear();
         process->deleteLater();
-        Q_EMIT errorOccurred(
-            QStringLiteral("Failed to start ACP server: %1").arg(errorString));
+        Q_EMIT errorOccurred(QStringLiteral("Failed to start ACP server: %1").arg(errorString));
         return;
     }
 
-    Q_EMIT errorOccurred(
-        QStringLiteral("ACP process error: %1").arg(process->errorString()));
+    Q_EMIT errorOccurred(QStringLiteral("ACP process error: %1").arg(process->errorString()));
 }
