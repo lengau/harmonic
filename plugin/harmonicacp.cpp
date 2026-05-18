@@ -16,11 +16,24 @@ HarmonicAcp::~HarmonicAcp() {
 void HarmonicAcp::start(const QString &command, const QString &workingDir) {
     if (m_process) {
         if (m_process->state() != QProcess::NotRunning) {
-            Q_EMIT errorOccurred(QStringLiteral("ACP server is still shutting down"));
-            return;
+            // Force-kill the process if it's still running during a start request
+            m_process->kill();
+            m_process->waitForFinished(500);
         }
         m_process->deleteLater();
         m_process = nullptr;
+    }
+
+    // Also clean up any lingering processes from previous stop() calls
+    auto it = m_shuttingDownProcesses.begin();
+    while (it != m_shuttingDownProcesses.end()) {
+        if (!it->isNull()) {
+            if ((*it)->state() != QProcess::NotRunning) {
+                (*it)->kill();
+            }
+            (*it)->deleteLater();
+        }
+        it = m_shuttingDownProcesses.erase(it);
     }
 
     m_process = new QProcess(this);
@@ -51,8 +64,12 @@ void HarmonicAcp::stop() {
         return;
     }
 
+    // Keep track of the process while it shuts down
+    m_shuttingDownProcesses.append(process);
+
     connect(process, &QProcess::finished, process, &QObject::deleteLater);
-    connect(process, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
+    connect(process, &QProcess::finished, this, [this, process](int, QProcess::ExitStatus) {
+        m_shuttingDownProcesses.removeAll(process);
         if (m_process) {
             return;
         }
