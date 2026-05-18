@@ -15,8 +15,7 @@
 static const char *CONFIG_GROUP = "Harmonic";
 
 HarmonicConfigPage::HarmonicConfigPage(QWidget *parent)
-    : KTextEditor::ConfigPage(parent)
-{
+    : KTextEditor::ConfigPage(parent) {
     auto *layout = new QVBoxLayout(this);
 
     // Backend selection
@@ -67,23 +66,19 @@ HarmonicConfigPage::HarmonicConfigPage(QWidget *parent)
 
 HarmonicConfigPage::~HarmonicConfigPage() = default;
 
-QString HarmonicConfigPage::name() const
-{
+QString HarmonicConfigPage::name() const {
     return i18n("Harmonic");
 }
 
-QString HarmonicConfigPage::fullName() const
-{
+QString HarmonicConfigPage::fullName() const {
     return i18n("Harmonic AI Vibecoding");
 }
 
-QIcon HarmonicConfigPage::icon() const
-{
+QIcon HarmonicConfigPage::icon() const {
     return QIcon::fromTheme(QStringLiteral("code-context"));
 }
 
-void HarmonicConfigPage::apply()
-{
+void HarmonicConfigPage::apply() {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
@@ -96,8 +91,7 @@ void HarmonicConfigPage::apply()
     group.sync();
 }
 
-void HarmonicConfigPage::reset()
-{
+void HarmonicConfigPage::reset() {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QLatin1String(CONFIG_GROUP));
 
@@ -113,8 +107,7 @@ void HarmonicConfigPage::reset()
     m_contextCheck->setChecked(group.readEntry("SendContext", true));
 }
 
-void HarmonicConfigPage::defaults()
-{
+void HarmonicConfigPage::defaults() {
     m_backendCombo->setCurrentIndex(0);
     m_commandEdit->setText(QStringLiteral("copilot"));
     m_modelEdit->clear();
