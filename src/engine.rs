@@ -220,12 +220,11 @@ fn run_custom(command: &str, prompt: &str) -> Result<String, EngineError> {
         ));
     }
 
-    let parts = shlex::split(command).ok_or_else(|| {
-        EngineError::invalid_config(format!("Invalid custom command: {command}"))
-    })?;
+    let parts = shlex::split(command)
+        .ok_or_else(|| EngineError::invalid_config(format!("Invalid custom command: {command}")))?;
 
     if parts.is_empty() {
-         return Err(EngineError::invalid_config(
+        return Err(EngineError::invalid_config(
             "Custom command is empty".to_string(),
         ));
     }
