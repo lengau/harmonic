@@ -56,7 +56,7 @@ class HarmonicChatWidget : public QWidget {
     };
 
     void appendMessage(const QString &role, const QString &text);
-    void refreshChatLog();
+    void refreshChatLog(bool fullRefresh = false);
     void scrollChatToBottom();
     void startStreaming(StreamBackend backend);
     void finishStreaming();
@@ -104,6 +104,9 @@ class HarmonicChatWidget : public QWidget {
     // UI state
     int m_historyPosition = 0;
     int m_typingDots = 0;
+    int m_lastRenderedMessageCount = 0;
+    int m_lastRenderedStreamingSize = 0;
+    int m_streamingPosition = 0;
     bool m_isStreaming = false;
     bool m_waitingForFirstChunk = false;
     bool m_cancelRequested = false;
