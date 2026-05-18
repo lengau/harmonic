@@ -6,6 +6,7 @@
 #include <KParts/PartLoader>
 #include <KParts/ReadOnlyPart>
 #include <KSharedConfig>
+#include <KShell>
 
 #include <QAbstractTextDocumentLayout>
 #include <QAbstractScrollArea>
@@ -411,6 +412,12 @@ void HarmonicChatWidget::sendMessage() {
 
     const QString fullPrompt = buildConversationPrompt(message);
 
+    const QStringList commandParts = KShell::splitArgs(command, KShell::TildeExpand);
+    if (commandParts.isEmpty()) {
+        appendMessage(QStringLiteral("error"), i18n("Invalid backend command configured."));
+        return;
+    }
+
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::SeparateChannels);
     connect(m_process, &QProcess::readyReadStandardOutput, this, &HarmonicChatWidget::onReadyReadStdout);
@@ -418,7 +425,7 @@ void HarmonicChatWidget::sendMessage() {
     connect(m_process, &QProcess::finished, this, &HarmonicChatWidget::onProcessFinished);
     connect(m_process, &QProcess::errorOccurred, this, &HarmonicChatWidget::onProcessError);
 
-    QStringList args;
+    QStringList args = commandParts.mid(1);
     if (backend == QStringLiteral("opencode")) {
         args << QStringLiteral("-p") << fullPrompt
              << QStringLiteral("-f") << QStringLiteral("text")
@@ -430,7 +437,7 @@ void HarmonicChatWidget::sendMessage() {
     }
 
     startStreaming(StreamBackend::Process);
-    m_process->start(command, args);
+    m_process->start(commandParts.first(), args);
 }
 
 void HarmonicChatWidget::cancelCurrentGeneration() {
