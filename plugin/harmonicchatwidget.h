@@ -40,25 +40,23 @@ class HarmonicChatWidget : public QWidget {
     void onAcpSessionCreated(const QString &sessionId);
     void onAcpTextChunk(const QString &text);
     void onAcpThoughtChunk(const QString &text);
-    void onAcpToolCall(const QString &toolCallId, const QString &title,
-                       const QString &kind);
-    void onAcpToolCallUpdate(const QString &toolCallId, const QString &status,
-                             const QString &content);
-    void onAcpPermissionRequested(const QJsonValue &requestId,
-                                  const QString &title,
-                                  const QJsonArray &options);
+    void onAcpToolCall(const QString &toolCallId, const QString &title, const QString &kind);
+    void onAcpToolCallUpdate(const QString &toolCallId, const QString &status, const QString &content);
+    void onAcpPermissionRequested(const QJsonValue &requestId, const QString &title, const QJsonArray &options);
     void onAcpPromptFinished(const QString &stopReason);
     void onAcpError(const QString &message);
     void onAcpProcessFinished();
     void clearSession();
 
   private:
-    enum class StreamBackend { None,
-                               Process,
-                               Acp };
+    enum class StreamBackend {
+        None,
+        Process,
+        Acp
+    };
 
     void appendMessage(const QString &role, const QString &text);
-    void refreshChatLog(bool fullRefresh = false);
+    void refreshChatLog();
     void scrollChatToBottom();
     void startStreaming(StreamBackend backend);
     void finishStreaming();
@@ -106,9 +104,6 @@ class HarmonicChatWidget : public QWidget {
     // UI state
     int m_historyPosition = 0;
     int m_typingDots = 0;
-    int m_lastRenderedMessageCount = 0;
-    int m_lastRenderedStreamingSize = 0;
-    int m_streamingPosition = 0;
     bool m_isStreaming = false;
     bool m_waitingForFirstChunk = false;
     bool m_cancelRequested = false;
