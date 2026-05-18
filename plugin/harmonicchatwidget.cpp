@@ -497,7 +497,12 @@ void HarmonicChatWidget::onReadyReadStderr() {
         return;
     }
 
-    if (text.contains(QStringLiteral("Allow"), Qt::CaseInsensitive) || text.contains(QStringLiteral("(y/n)"), Qt::CaseInsensitive) || text.contains(QStringLiteral("permission"), Qt::CaseInsensitive)) {
+    // Robust regex for catching common interactive permission prompts from CLI tools
+    static const QRegularExpression permissionRegex(
+        QStringLiteral("(\\[y/n\\]|\\(y/n\\)|Allow\\?|permission|authorize|confirm)"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    if (permissionRegex.match(text).hasMatch()) {
         showPermissionPrompt(text);
     }
 }
