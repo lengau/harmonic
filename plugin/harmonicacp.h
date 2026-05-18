@@ -52,6 +52,7 @@ class HarmonicAcp : public QObject {
     void handleSessionUpdate(const QJsonObject &params);
 
     QProcess *m_process = nullptr;
+    QList<QPointer<QProcess>> m_shuttingDownProcesses;
     QString m_sessionId;
     int m_nextId = 1;
     QByteArray m_readBuffer;
