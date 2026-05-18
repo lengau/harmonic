@@ -130,7 +130,7 @@ class ChatInputEdit : public QPlainTextEdit {
     Q_OBJECT
 
   public:
-    explicit ChatInputEdit(QWidget *parent = nullptr) : QPlainTextEdit(parent) {
+    explicit ChatInputEdit(QWidget *parent = nullptr)\n        : QPlainTextEdit(parent) {
         setPlaceholderText(i18n("Ask something..."));
         setLineWrapMode(QPlainTextEdit::WidgetWidth);
         setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
