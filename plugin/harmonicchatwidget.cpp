@@ -390,7 +390,6 @@ void HarmonicChatWidget::sendMessage() {
     KSharedConfig::Ptr config = KSharedConfig::openConfig();
     KConfigGroup group = config->group(QStringLiteral("Harmonic"));
     const QString backend = group.readEntry("Backend", "copilot");
-    const QString command = group.readEntry("Command", "copilot");
     const bool acpInitializing =
         backend == QStringLiteral("copilot") &&
         (m_acpInitializing || (m_acp->isRunning() && !m_acpSessionReady));
@@ -406,6 +405,15 @@ void HarmonicChatWidget::sendMessage() {
     m_inputHistory.append(message);
     m_historyPosition = m_inputHistory.size();
     m_input->clear();
+
+    sendMessageWithText(message);
+}
+
+void HarmonicChatWidget::sendMessageWithText(const QString &message) {
+    KSharedConfig::Ptr config = KSharedConfig::openConfig();
+    KConfigGroup group = config->group(QStringLiteral("Harmonic"));
+    const QString backend = group.readEntry("Backend", "copilot");
+    const QString command = group.readEntry("Command", "copilot");
 
     appendMessage(QStringLiteral("user"), message);
 
@@ -998,8 +1006,7 @@ void HarmonicChatWidget::processQueuedMessage() {
     }
 
     const QString queued = m_pendingMessages.takeFirst();
-    m_input->setPlainText(queued);
-    sendMessage();
+    sendMessageWithText(queued);
 }
 
 void HarmonicChatWidget::resetAcpState() {

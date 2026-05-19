@@ -31,6 +31,7 @@ class HarmonicChatWidget : public QWidget {
 
   private Q_SLOTS:
     void sendMessage();
+    void sendMessageWithText(const QString &message);
     void cancelCurrentGeneration();
     void onReadyReadStdout();
     void onReadyReadStderr();
