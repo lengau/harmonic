@@ -68,6 +68,7 @@ target_link_libraries(harmonicplugin
 install(TARGETS harmonicplugin DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/ktexteditor)
 install(FILES harmonicplugin.json DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/ktexteditor)
 install(FILES harmonicplugin.rc DESTINATION ${KDE_INSTALL_KXMLGUIDIR}/harmonicplugin)
+install(FILES ${HARMONIC_LIB} DESTINATION ${KDE_INSTALL_LIBDIR})
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
