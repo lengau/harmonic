@@ -4,6 +4,7 @@
 	dh $@ --buildsystem=cmake --sourcedirectory=plugin
 
 override_dh_auto_configure:
+	if [ -f Cargo.lock ]; then mv Cargo.lock Cargo.lock.save; fi
 	mkdir -p .cargo
 	echo '[source.crates-io]' > .cargo/config.toml
 	echo 'replace-with = "debian"' >> .cargo/config.toml
@@ -14,3 +15,4 @@ override_dh_auto_configure:
 override_dh_clean:
 	dh_clean
 	rm -rf .cargo
+	if [ -f Cargo.lock.save ]; then mv Cargo.lock.save Cargo.lock; fi
