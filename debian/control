@@ -13,7 +13,10 @@ Build-Depends:
  libkf6texteditor-dev,
  libkf6xmlgui-dev,
  qt6-base-dev,
- rustc
+ rustc,
+ librust-serde-dev,
+ librust-serde-json-dev,
+ librust-tempfile-dev
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
 Homepage: https://github.com/lengau/harmonic

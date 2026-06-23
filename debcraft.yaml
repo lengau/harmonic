@@ -35,3 +35,6 @@ parts:
       - libkf6texteditor-dev
       - libkf6xmlgui-dev
       - rustc
+      - librust-serde-dev
+      - librust-serde-json-dev
+      - librust-tempfile-dev
